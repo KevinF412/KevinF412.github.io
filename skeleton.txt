@@ -1,0 +1,350 @@
+#ifndef __SKELETON_H__
+#define __SKELETON_H__
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Kevin Fleishaker
+// kcf9@pitt.edu
+// Project2
+//
+///////////////////////////////////////////////////////////////////////////////
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
+
+struct cache_blk_t {
+  unsigned long tag;
+  char valid;
+  char dirty;
+};
+
+enum cache_policy {
+  LRU,
+  FIFO
+};
+
+struct cache_t {
+  int nsets;		// # sets
+  int bsize;		// block size
+  int assoc;		// associativity
+
+  enum cache_policy policy;       // cache replacement policy
+  struct cache_blk_t **blocks;    // cache blocks in the cache
+	unsigned long long **ts;        // keep a timestamp for each cache block
+};
+
+struct cache_t *
+cache_create(int size, int blocksize, int assoc, enum cache_policy policy)
+{
+// The cache is represented by a 2-D array of blocks. 
+// The first dimension of the 2D array is "nsets" which is the number of sets (entries)
+// The second dimension is "assoc", which is the number of blocks in each set.
+// A timestamp is associated with each block to record time (used to implement replacement policies).
+
+	int i;
+  int nblocks = 1; // number of blocks in the cache
+  int nsets = 1;   // number of sets (entries) in the cache
+
+  //
+  // YOUR JOB: calculate the number of sets and blocks in the cache
+  //
+  nblocks = size/16;
+  nsets = nblocks/assoc;
+
+  struct cache_t *C = (struct cache_t *)calloc(1, sizeof(struct cache_t));
+		
+  C->nsets = nsets; 
+  C->bsize = blocksize;
+  C->assoc = assoc;
+  C->policy = policy;
+
+  C->blocks= (struct cache_blk_t **)calloc(nsets, sizeof(struct cache_blk_t));
+  C->ts = (unsigned long long **)calloc(nsets, sizeof(unsigned long long));
+
+	for(i = 0; i < nsets; i++) {
+		C->blocks[i] = (struct cache_blk_t *)calloc(assoc, sizeof(struct cache_blk_t));
+    C->ts[i] = (unsigned long long *)calloc(assoc, sizeof(unsigned long long));
+	}
+
+  return C;
+}
+
+int
+cache_access(struct cache_t *cp, unsigned long address, 
+             char access_type, unsigned long long now)
+{
+	//////////////////////////////////////////////////////////////////////
+  //
+  // Your job:
+  // based on address determine the set to access in cp
+  // examine blocks in the set to check hit/miss
+  // if miss, determine the victim in the set to replace
+  // if update the block list based on the replacement policy
+  // return 0 if a hit, 1 if a miss or 2 if a miss_with_write_back
+  //
+	//////////////////////////////////////////////////////////////////////
+	int bit_string[32] = {0};
+	char bits_sub[4] = {0};
+	char hex[8] = {0};
+	sprintf(hex, "%x", address);
+	int count2 = 8;
+	int i3 = 0;
+	int i4 = 0;
+	//printf("check 2\n");
+	int cur_bit = 0;
+	int i = 27;
+	int count = 0;
+	int index = 0;
+	int tag_bits = 0;
+	int tag_index = 0;
+	int i2 = 0;
+	int numtag = 0;
+	int set_index = 0;
+	int found = 0;
+	int free = 0;
+	int oldest = 0;
+	int result= 0;
+	count = log10(cp->nsets)/log10(2);
+	int *bit_sub = malloc(count*sizeof(int));
+	tag_bits = 32 - 4 - count;
+	int *tag_string = malloc(tag_bits*sizeof(int));
+	tag_index = tag_bits;
+	
+	while(count2 > 0)
+	{
+		//find bit string of address
+		switch(hex[i3]){
+			case '0':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '1':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '2':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '3':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '4':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '5':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '6':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '7':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '8':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case '9':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'a':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'b':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'c':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'd':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'e':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'f':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+		}
+		
+		bit_string[i4] = bits_sub[0];
+		bit_string[i4+1] = bits_sub[1];
+		bit_string[i4+2] = bits_sub[2];
+		bit_string[i4+3] = bits_sub[3];
+		
+		i3++;
+		count2--;
+		i4 += 4;
+	}
+	
+	// find index into cache
+	while(count > 0){
+		if(bit_string[i] == 1){
+			index += pow(2, cur_bit);
+		}
+		bit_sub[count] = bit_string[i];
+		cur_bit++;
+		count--;
+		i--;
+	}
+	
+	if(index > cp->nsets){
+		result = 1;
+	}
+	else{
+		while(i2 < tag_index){			// find bit string of tag
+			tag_string[i2] = bit_string[i2];
+			i2++;
+		}
+		
+		cur_bit = 0;
+		tag_index -= 1;
+		
+		while(tag_index > 0){		// find decimal value of tag
+			if(tag_string[tag_index] == 1){
+				numtag += pow(2, cur_bit);
+			}
+			cur_bit++;
+			tag_index --;
+		}
+		
+		while(set_index < cp->assoc && found != 1){			// check for hit
+			if(cp->blocks[index][set_index].tag == numtag && cp->blocks[index][set_index].valid == 1){
+				found = 1;
+				break;
+			}
+			set_index++;
+		}
+		
+		if(found == 1){	// deal with hit
+			if(access_type == 0){
+				cp->ts[index][set_index] = now;
+			}
+			else if(access_type == 1){
+				cp->ts[index][set_index] = now;
+				cp->blocks[index][set_index].dirty = 1;
+			}
+			result = 0;
+		}
+		else if(found == 0){		// deal with miss
+			set_index = 0;
+			while(set_index < cp->assoc && free != 1){	// check for a free block
+				if(cp->blocks[index][set_index].valid == 0){
+					free = 1;
+					break;
+				}
+				set_index++;
+			}
+			if(free == 1){		// update free block
+				if(access_type == 0){
+					cp->ts[index][set_index] = now;
+					cp->blocks[index][set_index].tag = numtag;
+					cp->blocks[index][set_index].valid = 1;
+				}
+				if(access_type == 1){
+					cp->ts[index][set_index] = now;
+					cp->blocks[index][set_index].tag = numtag;
+					cp->blocks[index][set_index].valid = 1;
+					cp->blocks[index][set_index].dirty = 1;
+				}
+				result = 1;
+			}
+			if(free == 0){
+				set_index = 0;
+				while(set_index < cp->assoc){ 	// find block to replace
+					if(set_index == 0){
+						oldest = set_index;
+					}
+					else{
+						if(cp->ts[index][set_index] < cp->ts[index][oldest]){
+							oldest = set_index;
+						}
+					}
+					set_index++;
+				}
+				if(access_type == 0){	// deal with read
+					if(cp->blocks[index][oldest].dirty == 1){
+						cp->ts[index][oldest] = now;
+						cp->blocks[index][oldest].tag = numtag;
+						cp->blocks[index][oldest].valid = 1;
+						cp->blocks[index][oldest].dirty = 0;
+						result = 2;
+					}
+					else if(cp->blocks[index][oldest].dirty == 0){
+						cp->ts[index][oldest] = now;
+						cp->blocks[index][oldest].tag = numtag;
+						cp->blocks[index][oldest].valid = 1;
+						cp->blocks[index][oldest].dirty = 0;
+						result = 1;
+					}
+				}
+				if(access_type == 1){ // deal with write
+					if(cp->blocks[index][oldest].dirty == 1){
+						cp->ts[index][oldest] = now;
+						cp->blocks[index][oldest].tag = numtag;
+						cp->blocks[index][oldest].valid = 1;
+						cp->blocks[index][oldest].dirty = 1;
+						result = 2;
+					}
+					else if(cp->blocks[index][oldest].dirty == 0){
+						cp->ts[index][oldest] = now;
+						cp->blocks[index][oldest].tag = numtag;
+						cp->blocks[index][oldest].valid = 1;
+						cp->blocks[index][oldest].dirty = 1;
+						result = 1;
+					}
+				}
+			}
+		}
+	}
+	//printf("%d\n", result);
+	return result;
+}
+
+#endif

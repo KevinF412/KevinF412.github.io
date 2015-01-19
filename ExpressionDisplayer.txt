@@ -1,0 +1,78 @@
+// Kevin Fleishaker
+// kcf9@pitt.edu
+// 9962
+// 9-26-13
+
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+public class ExpressionDisplayer 
+{
+    public static void main(String args[])
+    {
+        In in = new In(args[0]);
+        String input;
+        
+        boolean getNext = true;
+        String expr = new String();
+        In user = new In();
+        String userin = " ";
+        int count = 1;
+        Scanner scanner = new Scanner(new InputStreamReader(System.in));
+        
+        while(in.hasNextLine())
+        {
+            expr = in.readLine();
+            ParseError check = new ParseError(expr);
+            if(check.nonAtom == true || check.missingRightParen == true || check.missingLeftParen == true || check.illegalOp == true)
+            {
+                StdOut.println("Error:");
+                if(check.nonAtom == true)
+                {
+                    StdOut.println(expr + " Illegal character : A non-atom must begin with '('.");
+                    StdOut.println("Get next expression");
+                }
+                else if(check.missingRightParen == true)
+                {
+                    StdOut.println(expr + " Missing right parenthesis.");
+                    StdOut.println("Get next expression");
+                }
+                else if(check.missingLeftParen == true)
+                {
+                    StdOut.println(expr + "Missing right parenthesis.");
+                    StdOut.println("Get next expression");
+                }
+                else if(check.illegalOp == true)
+                {
+                    StdOut.println(expr + " Illegal binary operator.");
+                    StdOut.println("Get next expression");
+                }
+            }
+            else
+            {
+                Expression exp = new Expression(expr);
+                StdOut.print(count + "." + " " + exp.toString());
+                TreeDisplay display = new TreeDisplay(expr);
+                display.setRoot(exp.root);
+                Expression exp2 = exp.copy();
+                exp2.normalize();
+                exp2.displayNormalized();
+                StdOut.print("\tContinue? y or n : ");
+                userin = scanner.nextLine();
+                StdOut.println("\n");
+                if(userin.equals("y"))
+                {
+                    count++;
+                    continue;
+                }
+                else if(userin.equals("n"))
+                {
+                    System.exit(0);
+                }
+            }
+        }
+        StdOut.println("EOF reached");
+        System.exit(0);
+    }
+}

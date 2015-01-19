@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Kevin Fleishaker - Computer Science Portfolio</title>
+<link rel="stylesheet" type="text/css" href="style.css">
+<link rel="stylesheet" type="text/css" href="colorbox.css">
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
+<script src="jquery.colorbox-min.js"></script>
+<script>
+	$(document).ready(function() {
+		$(".screen").colorbox();
+	});
+</script>
+</head>
+<body>
+<nav>
+	<ul id="navbar">
+		<li><a href="./resume.pdf">Resume</a></li>
+	</ul>
+</nav>
+
+<article>
+<header>Kevin Fleishaker's Portfolio</header>
+
+<div id="main">
+<div id="div1" style="width:80px;height:80px;display:none;background-color:red;"></div>
+<div id="ede" class="program">
+	<h2>Expression Displayer/Evaluator</h2>
+	<p>This program takes as input a file containing fully parenthesized logical expressions. ExpressionDisplayer uses the TreeDisplay 
+	class that was provided as part of the assignment to display the expression. Before doing so the expression is sent to the ParseError
+	class which checks that the expression is fully parenthesized, and no non-atoms are used and no illegal operations included. It then 
+	uses the Expression class to normalize the expression, and displays it. ExpressionEvaluator performs the same checks, sets the atoms 
+	given in the file, and calls the evaluate method of Expression to determine the value of the expression.</p>
+	<div class="source">
+	<ul>
+		<li><a href="./Expression.txt">Expression</a></li>
+		<li><a href="./ExpressionEvaluator.txt">ExpressionEvaluator</a></li>
+		<li><a href="./ExpressionDisplayer.txt">ExpressionDisplayer</a></li>
+		<li><a href="./ParseError.txt">ParseError</a></li>
+	</ul>
+	</div>
+	<a href="./ExpressionDisplayerEvaluator.zip">
+	<img src="download.png" class="d" alt="Download" width="50" height="50">
+	</a> 
+	<p class="download">Add stdlib and algs4 jars to classpath. Run with java ExpressionDisplayer data.txt or java ExpressionEvaluator data2eval.txt</p>
+	<a class="screen" href="./ExpressionDisplayerBig.png">
+		<img src="./ExpressionDisplayerSmall.png" id="ExpressionDisplayer" alt="screenshot of ExpressionDisplayer">
+	</a>
+	<a class="screen" href="./ExpressionEvaluatorBig.png">
+		<img src="./ExpressionEvaluatorSmall.png" id="ExpressionEvaluator" alt="screenshot of ExpressionEvaluator">
+	</a>
+</div>
+
+<div id="bwmtf" class="program">
+	<h2>BurrowsWheeler/MoveToFront</h2>
+	<p>Implements a Burrows Wheeler transform using a circular suffix array. The result of this is used by the MoveToFront class that performs 
+	move to front encoding</p>
+	<div class="source">
+	<ul>
+		<li><a href="./CircularSuffixArray.txt">CircularSuffixArray</a></li>
+		<li><a href="./BurrowsWheeler.txt">BurrowsWheeler</a></li>
+		<li><a href="./MoveToFront.txt">MoveToFront</a></li>
+	</ul>
+	</div>
+	<a href="./BurrowsWheeler.zip">
+	<img src="download.png" class="d" alt="Download" width="50" height="50">
+	</a>
+</div>
+
+<div id="fs" class="program">
+	<h2>FUSE File System</h2>
+	<p>Implements a two-level file system for a Linux system in C using FUSE. Directories are tracked in a hidden file named .directories. 
+	Data is stored in 512 byte blocks in a file named .disk. Root directory contains only subdirectories, subdirectories contain only 
+	regular files, all files are full access, and files cannot be truncated.</p>
+	<div class="source">
+	<ul>
+		<li><a  href="./cs1550.txt">cs1550</a></li>
+	</ul>
+	</div>
+	<a href="cs1550.zip">
+	<img src="download.png" class="d" alt="Download" width="50" height="50">
+	</a>
+</div>
+
+<div id="plc" class="program">
+	<h2>5-stage Pipeline with Cache Simulation</h2>
+	<p>Takes a trace file and simulates a pipeline processor with 5 stages in C. When each instruction finishes the cycle of completion
+	and type of instruction is printed out. When last instruction is processed the total number of cycles is displayed. 
+	Three different branch prediction methods are simulated: assume not taken, 1 bit, and 2 bit. A cache is simulated for loads and stores.
+	Extra cycles are added for cache misses, and incorrect branch prediction. Stalls for loads that change the source register the following 
+	instruction are also simulated.</p>
+	<div class="source">
+	<ul>
+		<li><a href="./pipeline.txt">pipeline</a></li>
+		<li><a href="./cache.txt">cache</a></li>
+		<li><a href="./skeleton.txt">skeleton</a></li>
+	</ul>
+	</div>
+	<div>
+	<a href="./Pipeline.zip">
+	<img src="download.png" class="d" alt="Download" width="50" height="50">
+	</a> 
+	<p class="download">Compile with gcc -o pipeline pipeline.c and gcc -o cache cache.c. Run pipeline with pipeline 
+	-trace_file_name -prediction_method -trace_view_on -cache_size -cache_assoc. Run cache by cache -trace_file_name 
+	-trace_view_on -cache_size -cache_associativity</p>
+	<ul id="pargs">
+		<li>prediction_method: 0, 1, or 2. 0 for assume not taken, 1 for 1bit prediction, and 2 for 2bit prediction.</li>
+		<li>trace_view_on: 1 to display type and cycle of completion of each instruction. 0 to only display number of 
+		cycles for execution.</li>
+	</ul>
+	</div>
+</div>
+
+<div id="sg" class="program">
+	<h2>Snake Game</h2>
+	<p>Implements snake game with goal to collect the frogs (green dots) in MIPS. Runs in MARS simulator with led display and keypad.</p>
+	<div class="source">
+	<ul>
+		<li><a href="./SnakeGame.txt">SnakeGame</a></li>
+	</ul>
+	</div>
+	<a href="./SnakeGame.zip">
+	<img src="download.png" class="d" id="sgd" alt="Download" width="50" height="50">
+	</a> 
+	<p class="download" id="sgdownload">Run executable jar file to launch MARS. Open SnakeGame.asm in  MARS. Select Tools -<code>&gt;</code> Keypad and LED Display Simulator. 
+	Click on Connect to MIPS. Assemble then run SnakeGame to begin.</p>
+	<a class="screen" href="./SnakeGameBig.png">
+		<img src="./SnakeGameSmall.png" id="SnakeGame" alt="Screenshot of snake game" width="100" height="100">
+	</a>
+</div>
+</div>
+</article>
+<p id="email">Email: kfleishaker@hotmail.com</p>
+<p id="cell">Cell: 412-327-4378</p>
+</body>
+</html>

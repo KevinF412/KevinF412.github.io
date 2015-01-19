@@ -1,0 +1,689 @@
+.data
+snakeXs:	.word	0, 1, 2, 3, 4, 5, 6, 7, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1	
+snakeYs:	.word	31, 31, 31, 31, 31, 31, 31, 31, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1	
+snakeColors:	.word	2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+greenXs:	.word	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
+greenYs:	.word	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1
+score:		.asciiz "The game score was "
+frogs:		.asciiz " frogs.\n"
+end:		.asciiz "Game Over\n"
+playTime:	.asciiz "The playing time was "
+ms:		.asciiz " ms.\n"
+time:		.word 	0, 0
+
+
+.text
+li	$v0, 30
+syscall
+la	$t0, time
+sw	$a0, 0($t0)
+sw	$a1, 4($t0)
+li	$s0, 8			# index of head of snake
+li	$s1, 0			# index of tail of snake
+li	$s2, 63			# right or top boundary
+li	$s3, 40			# queue end
+li	$s4, -1			# set to 63 if x = -1
+li	$s5, 1			#go left indicator
+li	$s6, 2			#go up indicator
+li	$s7, 3			#go down indicator
+li	$t9, 64			#set to 0 if y = 64
+li	$t3, 0			#number of frogs
+li	$t2, 0
+
+jal	drawStartSnake
+
+jal	initrandgen
+
+jal	drawFrogs
+
+j	startPoll
+
+
+startPoll:
+
+_poll:
+	# check for a key press
+		
+	la	$t0,0xffff0000	# status register address	
+	lw	$t0,0($t0)	# read status register
+	andi	$t0,$t0,1		# check for key press
+	bne	$t0,$0,_keypress
+	#li	$t7, 200
+	#li	$v0, 30
+	#syscall
+	#add	$t8, $a0, $a1
+	#bge	$t8, $t7, moveDir
+	j	moveDir
+	
+	j	_poll
+
+_keypress:
+	# handle a keypress to change snake direction
+	la	$t0,0xffff0004	# keypress register
+	lw	$t0,0($t0)	# read keypress register
+	
+
+	# center key
+	subi	$t1, $t0, 66				# center key?
+	beq	$t1, $0, center_pressed		# 
+
+	# left key
+	subi	$t1, $t0, 226				# left key?
+	beq	$t1, $0, left_pressed		# 
+
+	# right key
+	subi	$t1, $t0, 227				# right key?
+	beq	$t1, $0, right_pressed		# 
+
+	# up key
+	subi	$t1, $t0, 224				# up key?
+	beq	$t1, $0, up_pressed			# 
+
+	# down key
+	subi	$t1, $t0, 225				# down key?
+	beq	$t1, $0, down_pressed		# 
+
+	j	_poll
+
+right_pressed:
+	beq	$a3, $s5, notAllowedRight	# do not allow left 
+	li	$a3, 0				# change current direction
+	notAllowedRight:
+	j	_poll
+
+left_pressed:
+	beq	$a3, $zero, notAllowedLeft	# do not allow right
+	li	$a3, 1				# change current direction
+	notAllowedLeft:
+	j	_poll
+
+up_pressed:
+	beq	$a3, $s7, notAllowedUp		# do not allow up
+	li	$a3, 2				# change current direction
+	notAllowedUp:
+	j	_poll
+
+down_pressed:
+	beq	$a3, $s6, notAllowedDown	# do not allow up
+	li	$a3, 3				# change current direction
+	notAllowedDown:
+	j	_poll
+
+center_pressed:
+	j	gameOver 
+
+# branch to right move function
+moveDir:
+beq	$a3, $zero, moveRight
+beq	$a3, $s5, moveLeft
+beq	$a3, $s6, moveUp
+beq	$a3, $s7, moveDown
+moveDirDone:
+j	_poll
+
+gameOver:
+li	$v0, 4
+la	$a0, end
+syscall
+la	$a0, score
+syscall
+li	$v0, 1
+add	$a0, $t2, $zero
+syscall
+li	$v0, 4
+la	$a0, frogs
+syscall
+li	$v0, 10
+syscall
+
+# draw the green LEDs
+drawFrogs:
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+la	$t6, greenXs
+la	$t4, greenYs
+li	$t5, 32
+
+# plot a max of 32 green LEDs
+setLoop:
+li	$a0, 63
+jal	getrand
+sw	$v0, 0($t6)
+li	$a0, 63
+jal	getrand
+sw	$v0, 0($t4)
+lw	$a0, 0($t6)
+lw	$a1, 0($t4)
+jal	_getLED
+bne	$v0, $zero, cantPlace		# if LED already has frog or snake do not draw
+li	$a2, 3
+jal	_setLED
+addi	$t4, $t4, 4
+addi	$t6, $t6, 4			# increment to next frog LEDs array index
+addi	$t3, $t3, 1
+cantPlaceDone:
+subi	$t5, $t5, 1
+bne	$t5, $zero, setLoop
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+cantPlace:
+sw	$s4, 0($t6)
+sw	$s4, 0($t4)
+j	cantPlaceDone
+
+drawStartSnake:
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+la	$t4, snakeXs			#t4 has adress of snake X cordinates
+la	$t5, snakeYs			#t5 has adress of snake Y cordinates
+la	$t6, snakeColors		#t6 has adress of init snake colors
+li	$t7, 8				#counter for init snake iterations
+drawStartLoop:
+lw	$a0, 0($t4)			#load adress at current index of Xs array
+lw	$a1, 0($t5)			#load adress at current index of Ys array
+lw	$a2, 0($t6)			#load yellow color to a2
+jal	_setLED
+addi	$t4, $t4, 4			#increment x array
+addi	$t5, $t5, 4			#increment y array
+addi	$t6, $t6, 4			#increment color array
+subi	$t7, $t7, 1			#decrement iteration counter
+bne	$t7, $zero, drawStartLoop	#check if whole snake drawn
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+# inserts LED at new head position based on current direction
+_insert_q:
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+
+goToHead:
+move	$t4, $s0			#t4 has index of head of snake
+beq	$t4, $zero, zeroindex		#if 0 don't subtract 1
+subi	$t4, $t4, 1			#decrement iteration counter
+skip:
+la	$t5, snakeXs			#t5 has adress of snake x coordinates
+la	$t6, snakeYs			#t6 has adress of snake y coordinates
+goToLoop:
+beq	$t4, $zero, atHead		#check if at head
+addi	$t5, $t5, 4			#increment to next index
+addi	$t6, $t6, 4
+subi	$t4, $t4, 1			#decrement counter
+j	goToLoop
+#code for branch to correct function depending on current direction
+atHead:
+beq	$a3, $s7, goToDoneDown
+beq	$a3, $s6, goToDoneUp
+beq	$a3, $s5, goToDoneLeft
+beq	$a3, $zero, goToDoneRight
+goToDoneRight:
+lw	$a0, 0($t5)			#get current x coordinate
+addi	$a0, $a0, 1			#add 1 to x coordinate to move right
+bgt	$a0, $s2, wrapRight			#if > 63 wrap around
+wrapdoneRight:
+lw	$a1, 0($t6)			#get current y coordinate
+li	$a2, 2				#load yellow
+jal 	_setLED
+addi	$s0, $s0, 1			#increment head of snake index
+bgt	$s0, $s3, circleRight		#if index > 40 set to index 0
+j	nocircleRight
+continueRight:
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+wrapRight:
+li	$a0, -1				
+sw	$a0, 0($t5)			#put -1 if x > 63 into current x cord
+li	$a0, 0				#put 0 in x coordinate for set LED
+j	wrapdoneRight
+
+zeroindex:
+j	skip
+
+circleRight:
+lw	$t0, 0($t5)			#get current x coordinate
+addi	$t0, $t0, 1			#add 1 to go to next point
+lw	$t1, 0($t6)			#get current y coordinate
+li	$s0, 0				#move head of snake to 0 index
+la	$t5, snakeXs			
+la	$t6, snakeYs
+sw	$t0, 0($t5)			#store new x coordinate of head
+sw	$t1, 0($t6)			#store next y coordinate of head
+j continueRight
+
+nocircleRight:
+lw	$t0, 0($t5)			#get current x coordinate
+addi	$t0, $t0, 1			#add 1 to go to next point
+lw	$t1, 0($t6)			#get current y coordinate
+addi	$t5, $t5, 4
+addi	$t6, $t6, 4
+sw	$t0, 0($t5)			#store new x coordinate of head
+sw	$t1, 0($t6)			#store next y coordinate of head
+j	continueRight
+
+goToDoneDown:
+lw	$a1, 0($t6)			#get current y coordinate
+addi	$a1, $a1, 1			#add 1 to y coordinate to move right
+bgt	$a1, $s2, wrapDown			#if > 63 wrap around
+wrapdoneDown:
+lw	$a0, 0($t5)			#get current x coordinate
+li	$a2, 2				#load yellow
+jal 	_setLED
+addi	$s0, $s0, 1			#increment head of snake index
+bgt	$s0, $s3, circleDown		#if index > 40 set to index 0
+j	nocircleDown
+continueDown:
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+wrapDown:
+li	$a1, -1				
+sw	$a1, 0($t6)			#put -1 if y > 63 into current y cord
+li	$a1, 0				#put 0 in y coordinate for set LED
+j	wrapdoneDown
+
+circleDown:
+lw	$t0, 0($t6)			#get current y coordinate
+addi	$t0, $t0, 1			#add 1 to go to next point
+lw	$t1, 0($t5)			#get current x coordinate
+li	$s0, 0				#move head of snake to 0 index
+la	$t5, snakeXs			
+la	$t6, snakeYs
+sw	$t0, 0($t6)			#store new y coordinate of head
+sw	$t1, 0($t5)			#store next x coordinate of head
+j continueDown
+
+nocircleDown:
+lw	$t0, 0($t6)			#get current y coordinate
+addi	$t0, $t0, 1			#add 1 to go to next point
+lw	$t1, 0($t5)			#get current x coordinate
+addi	$t5, $t5, 4
+addi	$t6, $t6, 4
+sw	$t0, 0($t6)			#store new y coordinate of head
+sw	$t1, 0($t5)			#store next x coordinate of head
+j	continueDown
+
+goToDoneUp:
+lw	$a1, 0($t6)			#get current y coordinate
+subi	$a1, $a1, 1			#sub 1 to y coordinate to move right
+blt	$a1, $zero, wrapUp			#if < 0 wrap around
+wrapdoneUp:
+lw	$a0, 0($t5)			#get current x coordinate
+li	$a2, 2				#load yellow
+jal 	_setLED
+addi	$s0, $s0, 1			#increment head of snake index
+bgt	$s0, $s3, circleUp		#if index > 40 set to index 0
+j	nocircleUp
+continueUp:
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+wrapUp:
+li	$a1, 64				
+sw	$a1, 0($t6)			#put 64 if y < 0 into current y cord
+li	$a1, 63				#put 0 in y coordinate for set LED
+j	wrapdoneUp
+
+circleUp:
+lw	$t0, 0($t6)			#get current y coordinate
+subi	$t0, $t0, 1			#add 1 to go to next point
+lw	$t1, 0($t5)			#get current x coordinate
+li	$s0, 0				#move head of snake to 0 index
+la	$t5, snakeXs			
+la	$t6, snakeYs
+sw	$t0, 0($t6)			#store new y coordinate of head
+sw	$t1, 0($t5)			#store next x coordinate of head
+j continueUp
+
+nocircleUp:
+lw	$t0, 0($t6)			#get current y coordinate
+subi	$t0, $t0, 1			#sub 1 to go to next point
+lw	$t1, 0($t5)			#get current x coordinate
+addi	$t5, $t5, 4
+addi	$t6, $t6, 4
+sw	$t0, 0($t6)			#store new y coordinate of head
+sw	$t1, 0($t5)			#store next x coordinate of head
+j	continueUp
+
+goToDoneLeft:
+lw	$a0, 0($t5)			#get current x coordinate
+#beq	$a0, $s4, dontadd
+subi	$a0, $a0, 1			#sub 1 to x coordinate to move left
+#daContin:
+blt	$a0, $zero, wrapLeft			#if < 0 wrap around
+wrapdoneLeft:
+lw	$a1, 0($t6)			#get current y coordinate
+li	$a2, 2				#load yellow
+jal 	_setLED
+addi	$s0, $s0, 1			#increment head of snake index
+bgt	$s0, $s3, circleLeft		#if index > 40 set to index 0
+j	nocircleLeft
+continueLeft:
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+wrapLeft:
+li	$a0, 64				
+sw	$a0, 0($t5)			#put -1 if x > 63 into current x cord
+li	$a0, 63				#put 0 in x coordinate for set LED
+j	wrapdoneLeft
+
+circleLeft:
+lw	$t0, 0($t5)			#get current x coordinate
+subi	$t0, $t0, 1			#sub 1 to go to next point
+lw	$t1, 0($t6)			#get current y coordinate
+li	$s0, 0				#move head of snake to 0 index
+la	$t5, snakeXs			
+la	$t6, snakeYs
+sw	$t0, 0($t5)			#store new x coordinate of head
+sw	$t1, 0($t6)			#store next y coordinate of head
+j continueLeft
+
+nocircleLeft:
+lw	$t0, 0($t5)			#get current x coordinate
+subi	$t0, $t0, 1			#sub 1 to go to next point
+lw	$t1, 0($t6)			#get current y coordinate
+addi	$t5, $t5, 4
+addi	$t6, $t6, 4
+sw	$t0, 0($t5)			#store new x coordinate of head
+sw	$t1, 0($t6)			#store next y coordinate of head
+j	continueLeft
+
+# removes the tail of the snake 
+_remove_q:
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+
+goToTail:
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+move	$t4, $s1				#t4 has index of snake tail
+#beq	$t4, $zero, zeroindex2			#if at 0 index don't subtract
+#subi	$t4, $t4, 1				#decrement counter
+skip2:
+la	$t5, snakeXs
+la	$t6, snakeYs
+removeLoop:
+beq	$t4, $zero, goToDone2			#check if at tail
+addi	$t5, $t5, 4				#incremt index
+addi	$t6, $t6, 4
+subi	$t4, $t4, 1				#decrement counter
+j	removeLoop
+
+zeroindex2:
+j	skip2
+
+goToDone2:
+lw	$v0, 0($t5)
+beq	$v0, $t9, setx0				#get current x of tail
+beq	$v0, $s4, negativex
+negxDone:
+lw	$v1, 0($t6)
+beq	$v1, $t9, sety0
+beq	$v1, $s4, negativey
+negyDone:				#get current y of tail
+move	$a0, $v0				#move current x to a0
+move	$a1, $v1				#move current y to a1
+wrapDone2:
+li	$a2, 0					#turn LED off
+jal	_setLED					
+addi	$s1, $s1, 1				#increment index of snake tail
+bgt	$s1, $s3, circle2			#if index.40 move to index 0
+continue2:
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+negativex:
+li	$v0, 63
+j	negxDone
+
+negativey:
+li	$v1, 63
+j	negyDone
+
+sety0:
+li	$v1, 0
+j	negyDone
+
+setx0:
+li	$v0, 0
+j	negxDone
+
+wrapTail:
+addi	$t5, $t5, 4				#increment to next index
+sw	$zero, 0($t5)				#store 0 at next x index
+subi	$t5, $t5, 4				#decrement back to current index
+j	wrapDone2
+
+circle2:
+li	$s1, 0
+j	continue2
+
+# gets the coordinate of the head of the snake v0 = x, v1 = y
+_peek_end_q:
+move	$t4, $s0
+beq	$t4, $zero, zeroindex3
+subi	$t4, $t4, 1
+skip3:
+la	$t5, snakeXs
+la	$t6, snakeYs
+goToLoop2:
+beq	$t4, $zero, goToDone3
+addi	$t5, $t5, 4
+addi	$t6, $t6, 4
+subi	$t4, $t4, 1
+j	goToLoop2
+
+goToDone3:
+lw	$v0, 0($t5)
+lw	$v1, 0($t6)
+jr	$ra
+
+zeroindex3:
+j	skip3
+
+moveRight:
+li	$v0, 32
+li	$a0, 200
+syscall
+jal	_peek_end_q
+add	$a0, $v0, $zero
+addi	$a0, $a0, 1
+bgt	$a0, $s2, overRight			# check if need to wrap
+overRightDone:
+add	$a1, $v1, $zero
+jal	_getLED
+#beq	$v0, $s6, gameOver   			
+jal	_insert_q
+beq	$v0, $s7, skipRemove			# check if next head position is on a frog
+jal	_remove_q
+j	moveDirDone
+
+overRight:
+li	$a0, 0
+j	overRightDone
+
+skipRemove:
+addi	$t2, $t2, 1
+subi	$t3, $t3, 1
+beq	$t3, $zero, gameOver
+j	moveDirDone
+
+moveDown:
+li	$v0, 32
+li	$a0, 200
+syscall
+jal	_peek_end_q
+add	$a0, $v0, $zero
+add	$a1, $v1, $zero
+addi	$a1, $a1, 1
+bgt	$a1, $s2, overDown		# check if need to wrap
+overDownDone:
+jal	_getLED
+#beq	$v0, $s6, gameOver
+jal	_insert_q
+beq	$v0, $s7, skipRemove		# check if next head position on frog
+jal	_remove_q
+j	moveDirDone
+
+overDown:
+li	$a1, 0
+j	overDownDone
+
+moveUp:
+li	$v0, 32
+li	$a0, 200
+syscall
+jal	_peek_end_q
+add	$a0, $v0, $zero
+add	$a1, $v1, $zero
+subi	$a1, $a1, 1
+blt	$a1, $zero, overUp		# check if wrap needed
+overUpDone:
+jal	_getLED
+#beq	$v0, $s6, gameOver
+jal	_insert_q
+beq	$v0, $s7, skipRemove		# check if next head position on frog
+jal	_remove_q
+j	moveDirDone
+
+overUp:
+li	$a1, 63
+j	overUpDone
+
+moveLeft:
+li	$v0, 32
+li	$a0, 200
+syscall
+jal	_peek_end_q
+add	$a0, $v0, $zero
+subi	$a0, $a0, 1
+blt	$a0, $zero, overLeft			# check if wrap needed
+overLeftDone:
+add	$a1, $v1, $zero
+jal	_getLED
+#beq	$v0, $s6, gameOver
+jal	_insert_q
+beq	$v0, $s7, skipRemove			# check if next position is frog
+jal	_remove_q
+j	moveDirDone
+
+overLeft:
+li	$a0, 63
+j	overLeftDone
+		
+	# int _getLED(int x, int y)
+	# 03/11/2012: this version is for the 64x64 LED
+	#   returns the value of the LED at position (x,y)
+	#
+	#  warning:   x and y are assumed to be legal values (0-63,0-63)
+	#  arguments: $a0 holds x, $a1 holds y
+	#  trashes:   $t0-$t2
+	#  returns:   $v0 holds the value of the LED (0, 1, 2, 3)
+	#
+_getLED:
+	subi	$sp, $sp, 4
+	sw	$t2, 0($sp)
+	# byte offset into display = y * 16 bytes + (x / 4)
+	sll  $t0,$a1,4      # y * 16 bytes
+	srl  $t1,$a0,2      # x / 4
+	add  $t0,$t0,$t1    # byte offset into display
+	la   $t2,0xffff0008
+	add  $t0,$t2,$t0    # address of byte with the LED
+	# now, compute bit position in the byte and the mask for it
+	andi $t1,$a0,0x3    # remainder is bit position in byte
+	neg  $t1,$t1        # negate position for subtraction
+	addi $t1,$t1,3      # bit positions in reverse order
+    	sll  $t1,$t1,1      # led is 2 bits
+	# load LED value, get the desired bit in the loaded byte
+	lbu  $t2,0($t0)
+	srlv $t2,$t2,$t1    # shift LED value to lsb position
+	andi $v0,$t2,0x3    # mask off any remaining upper bits
+	lw	$t2, 0($sp)
+	addi	$sp, $sp, 4
+	jr   $ra
+
+	# void _setLED(int x, int y, int color)
+	# 03/11/2012: this version is for the 64x64 LED
+	#   sets the LED at (x,y) to color
+	#   color: 0=off, 1=red, 2=orange, 3=green
+	#
+	# warning:   x, y and color are assumed to be legal values (0-63,0-63,0-3)
+	# arguments: $a0 is x, $a1 is y, $a2 is color 
+	# trashes:   $t0-$t3
+	# returns:   none
+	#
+_setLED:
+	subi	$sp, $sp, 8
+	sw	$t3, 0($sp)
+	sw	$t2, 4($sp)
+	# byte offset into display = y * 16 bytes + (x / 4)
+	sll	$t0,$a1,4      # y * 16 bytes
+	srl	$t1,$a0,2      # x / 4
+	add	$t0,$t0,$t1    # byte offset into display
+	li	$t2,0xffff0008	# base address of LED display
+	add	$t0,$t2,$t0    # address of byte with the LED
+	# now, compute led position in the byte and the mask for it
+	andi	$t1,$a0,0x3    # remainder is led position in byte
+	neg	$t1,$t1        # negate position for subtraction
+	addi	$t1,$t1,3      # bit positions in reverse order
+	sll	$t1,$t1,1      # led is 2 bits
+	# compute two masks: one to clear field, one to set new color
+	li	$t2,3		
+	sllv	$t2,$t2,$t1
+	not	$t2,$t2        # bit mask for clearing current color
+	sllv	$t1,$a2,$t1    # bit mask for setting color
+	# get current LED value, set the new field, store it back to LED
+	lbu	$t3,0($t0)     # read current LED value	
+	and	$t3,$t3,$t2    # clear the field for the color
+	or	$t3,$t3,$t1    # set color field
+	sb	$t3,0($t0)     # update display
+	lw	$t3, 0($sp)
+	lw	$t2, 4($sp)
+	addi	$sp, $sp, 8
+	jr	$ra
+
+initrandgen:
+# prologue
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+
+# get system time
+li	$v0, 30
+syscall
+# system time 0 a1:a0
+move	$a1, $a0		# seed (lower half of system time)
+li	$a0, 1			# id
+li	$v0, 40
+syscall
+
+# epilogue
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+jr	$ra
+
+# input	$a0 ----- upper bound
+getrand:
+# pro
+subi	$sp, $sp, 4
+sw	$ra, 0($sp)
+
+# id
+move	$a1, $a0		# upper bound
+li	$a0, 1			# same id as initrandgen
+li	$v0, 42
+syscall
+
+move	$v0, $a0
+# epi
+lw	$ra, 0($sp)
+addi	$sp, $sp, 4
+
+jr	$ra

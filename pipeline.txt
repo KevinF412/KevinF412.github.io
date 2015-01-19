@@ -1,0 +1,579 @@
+/**************************************************************/
+/* Kevin Fleishaker
+	Project 1
+	compile in gcc -o pipeline pipeline.c
+***************************************************************/
+
+#include <stdio.h>
+#include "trace_item.h" 
+#include <math.h>
+#include "skeleton.h"
+
+#define TRACE_BUFSIZE 1024*1024
+
+static FILE *trace_fd;
+static int trace_buf_ptr;
+static int trace_buf_end;
+static struct trace_item *trace_buf;
+static struct cache_t *Cache;
+unsigned long long sim_time = 0;
+
+struct stage {
+	unsigned char type;			
+	unsigned char sReg_a;			
+	unsigned char sReg_b;			
+	unsigned char dReg;			
+	unsigned int PC;			
+	unsigned int Addr;	
+	unsigned int taken;
+	unsigned int last;
+};
+
+void trace_init()
+{
+  trace_buf = malloc(sizeof(struct trace_item) * TRACE_BUFSIZE);
+
+  if (!trace_buf) {
+    fprintf(stdout, "** trace_buf not allocated\n");
+    exit(-1);
+  }
+
+  trace_buf_ptr = 0;
+  trace_buf_end = 0;
+}
+
+void trace_uninit()
+{
+  free(trace_buf);
+  fclose(trace_fd);
+}
+
+int trace_get_item(struct trace_item **item)
+{
+  int n_items;
+
+  if (trace_buf_ptr == trace_buf_end) {	/* if no more unprocessed items in the trace buffer, get new data  */
+    n_items = fread(trace_buf, sizeof(struct trace_item), TRACE_BUFSIZE, trace_fd);
+    if (!n_items) return 0;				/* if no more items in the file, we are done */
+
+    trace_buf_ptr = 0;
+    trace_buf_end = n_items;			/* n_items were read and placed in trace buffer */
+  }
+
+  *item = &trace_buf[trace_buf_ptr];	/* read a new trace item for processing */
+  trace_buf_ptr++;
+
+  return 1;
+}
+
+int get_index(struct stage *cur_stage){ /* find integer value of bits 2-10 of PC */
+	char bits[9] = {0};
+	char bits_sub[4] = {0};
+	char hex[6] = {0};
+	sprintf(hex, "%x", cur_stage->PC);
+
+	int count = 3;
+	int i = 3;
+	int i2 = 0;
+	int index = 0;
+	
+	while(count > 0)
+	{
+		switch(hex[i]){
+			case '0':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '1':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '2':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '3':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 0;
+				break;
+			case '4':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '5':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '6':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '7':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 0;
+				break;
+			case '8':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case '9':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'a':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'b':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 0;
+				bits_sub[0] = 1;
+				break;
+			case 'c':
+				bits_sub[3] = 0;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'd':
+				bits_sub[3] = 1;
+				bits_sub[2] = 0;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'e':
+				bits_sub[3] = 0;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+			case 'f':
+				bits_sub[3] = 1;
+				bits_sub[2] = 1;
+				bits_sub[1] = 1;
+				bits_sub[0] = 1;
+				break;
+		}
+		bits[i2] = bits_sub[0];
+		bits[i2+1] = bits_sub[1];
+		if(i2 != 7){
+			bits[i2+2] = bits_sub[2];
+			bits[i2+3] = bits_sub[3];
+		}
+		i++;
+		count--;
+		i2 += 4;
+	}
+	if(bits[8] == 1){
+		index += 1;
+	}
+	if(bits[7] == 1){
+		index += 2;
+	}
+	if(bits[6] == 1){
+		index += 4;
+	}
+	if(bits[5] == 1){
+		index += 8;
+	}
+	if(bits[4] == 1){
+		index += 16;
+	}
+	if(bits[3] == 1){
+		index += 32;
+	}
+	if(bits[2] == 1){
+		index += 64;
+	}
+	if(bits[1] == 1){
+		index += 128;
+	}
+	if(bits[0] == 1){
+		index += 256;
+	}
+	return index;
+}
+
+int powerof2(unsigned int bytes){
+	while (((bytes % 2) == 0) && bytes > 1) /* While x is even and > 1 */
+	bytes /= 2;
+	return (bytes == 1);
+}
+
+int main(int argc, char **argv)
+{
+  struct trace_item *tr_entry;
+  struct stage *stage1 = malloc(sizeof(struct stage));
+  struct stage *stage2 = malloc(sizeof(struct stage));
+  struct stage *stage3 = malloc(sizeof(struct stage));
+  struct stage *stage4 = malloc(sizeof(struct stage));
+  struct stage *stage5 = malloc(sizeof(struct stage));
+  size_t size;
+  char *trace_file_name;
+  int trace_view_on = 0;
+  int stalled = 0;
+  int prediction_method = 0;
+  int extra_cycles = 0;
+  int end = 0;
+  int index = 7;
+  int predict_1bit[256][2];
+  int predict_2bit[256][2];
+  int data_miss = 0;
+  int cache_size = 1;         // cache size (in bytes), use KILO defined on top of the file
+  int cache_block_size = 16;   // cache block size (in bytes)
+  int assoc = 1;              // cache associativity
+  int repl_policy = LRU;      // cache replacement policy
+  int stall_cycles= 0;
+  int result = 0;
+  
+  unsigned char t_type = 0;
+  unsigned char t_sReg_a= 0;
+  unsigned char t_sReg_b= 0;
+  unsigned char t_dReg= 0;
+  unsigned int t_PC = 0;
+  unsigned int t_Addr = 0;
+
+  unsigned int cycle_number = 0;
+
+  if (argc != 6) {
+    fprintf(stdout, "\nUSAGE: tv <trace_file> <switch - any character>\n");
+    fprintf(stdout, "\n(switch) to turn on or off individual item view.\n\n");
+    exit(0);
+  }
+    
+  trace_file_name = argv[1];
+  prediction_method = atoi(argv[2]) ;
+  trace_view_on = atoi(argv[3]) ;
+  cache_size = atoi(argv[4]);
+  if(!powerof2(cache_size)){
+	fprintf(stdout, "\ncache size must be power of 2\n");
+	exit(0);
+  }
+  assoc = atoi(argv[5]);
+  if(!powerof2(assoc)){
+	fprintf(stdout, "\nassociativity must be power of 2\n");
+	exit(0);
+  }
+  
+  fprintf(stdout, "\n ** opening file %s\n", trace_file_name);
+
+  trace_fd = fopen(trace_file_name, "rb");
+
+  if (!trace_fd) {
+    fprintf(stdout, "\ntrace file %s not opened.\n\n", trace_file_name);
+    exit(0);
+  }
+
+  trace_init();
+  
+  Cache = cache_create(cache_size, cache_block_size, assoc, repl_policy);
+
+  while(1) {
+	//printf("check 1\n");
+	if(stalled != 1 && data_miss != 1){
+		size = trace_get_item(&tr_entry);
+	   
+		if (!size) {       /* no more instructions (trace_items) to simulate */
+		  /*if(trace_view_on != 1 && end == 0){
+			*cycle_number += extra_cycles;
+		  }*/
+		 
+     	  cycle_number++;
+		  //end = 1;
+		  stage1->last = 1;
+		  /*t_type = NULL;
+		  *t_sReg_a = NULL;
+		  *t_sReg_b = NULL;
+		  *t_dReg = NULL;
+		  *t_PC = NULL;
+		  t_Addr = NULL;*/
+		}
+		else{  		/* parse the next instruction to simulate */
+		  //printf("check 2\n");
+		  cycle_number++;
+		  //printf("check 6\n");
+		  stage1->last = 0;
+		  //printf("check 5\n");
+		  t_type = tr_entry->type;
+		  t_sReg_a = tr_entry->sReg_a;
+		  t_sReg_b = tr_entry->sReg_b;
+		  t_dReg = tr_entry->dReg;
+		  t_PC = tr_entry->PC;
+		  t_Addr = tr_entry->Addr;
+		}  
+		//printf("check 4\n");
+	}
+// SIMULATION OF A SINGLE CYCLE cpu IS TRIVIAL - EACH INSTRUCTION IS EXECUTED
+// IN ONE CYCLE
+
+    if (trace_view_on && cycle_number > 5) {/* print the executed instruction if trace_view_on=1 */
+		if(data_miss == 1){
+			cycle_number++;
+			printf("[cycle %d]: STALL FROM CACHE MISS", cycle_number);
+		}
+		else{
+			  switch(stage5->type) {
+				case ti_NOP:
+				  printf("[cycle %d] entry NOP:",cycle_number) ;
+				  break;
+				case ti_RTYPE:
+				  printf("[cycle %d] entry RTYPE:",cycle_number) ;
+				  break;
+				case ti_ITYPE:
+				  printf("[cycle %d] entry ITYPE:",cycle_number) ;
+				  break;
+				case ti_LOAD:
+				  printf("[cycle %d] entry LOAD:",cycle_number) ;
+				  break;
+				case ti_STORE:
+				  printf("[cycle %d] entry STORE:",cycle_number) ;
+				  break;
+				case ti_BRANCH:
+				  printf("[cycle %d] entry BRANCH:",cycle_number) ;
+				  break;
+				case ti_JTYPE:
+				  printf("[cycle %d] entry JTYPE:",cycle_number) ;
+				  break;
+				case ti_SPECIAL:
+				  printf("[cycle %d] entry SPECIAL:",cycle_number) ;
+				  break;
+				case ti_JRTYPE:
+				  printf("[cycle %d] entry JRTYPE:",cycle_number) ;
+				  break;
+			  }
+			  printf(" (PC: %x) (sReg_a: %d) (sReg_b: %d) (dReg: %d) (addr: %x)\n", stage5->PC, stage5->sReg_a, stage5->sReg_b, stage5->dReg, stage5->Addr);
+			  if(stage5->type == ti_BRANCH && stage5->taken == 1 && (prediction_method == 0 || prediction_method==1 || prediction_method==2)){
+				cycle_number++;
+				printf("[cycle%d] entry SQUASHED:\n", cycle_number);
+				cycle_number++;
+				printf("[cycle%d] entry SQUASHED:\n", cycle_number);
+			  }
+		}
+    }
+	
+	if(stall_cycles == 0){
+		data_miss = 0;
+	//printf("check 3\n");
+		if(cycle_number > 4){ /* move instruction to stage 5 */
+			stage5->type = stage4->type;
+			stage5->sReg_a = stage4->sReg_a;
+			stage5->sReg_b = stage4->sReg_b;
+			stage5->dReg = stage4->dReg;
+			stage5->PC = stage4->PC;
+			stage5->Addr = stage4->Addr;
+			stage5->taken = stage4->taken;
+			stage5->last = stage4->last;
+		}
+		
+		if(cycle_number > 3){ /* move instruction to stage 4 */
+			stage4->type = stage3->type;
+			stage4->sReg_a = stage3->sReg_a;
+			stage4->sReg_b = stage3->sReg_b;
+			stage4->dReg = stage3->dReg;
+			stage4->PC = stage3->PC;
+			stage4->Addr = stage3->Addr;
+			stage4->taken = stage3->taken;
+			stage4->last = stage3->last;
+		}
+		
+		if(cycle_number > 2 && stalled != 1){ /* move instruction to stage 3 */
+			stage3->type = stage2->type;
+			stage3->sReg_a = stage2->sReg_a;
+			stage3->sReg_b = stage2->sReg_b;
+			stage3->dReg = stage2->dReg;
+			stage3->PC = stage2->PC;
+			stage3->Addr = stage2->Addr;
+			stage3->taken = stage2->taken;
+			stage3->last = stage2->last;
+		}
+		else if(cycle_number > 2 && stalled == 1){ /* stall pipeline */
+			stage3->type = ti_NOP;
+			stage3->sReg_a = 0;
+			stage3->sReg_b = 0;
+			stage3->dReg = 0;
+			stage3->PC = 0;
+			stage3->Addr = 0;
+			stage3->taken = 0;
+			stage3->last = 0;
+		}
+		
+		if(cycle_number > 1 && stalled != 1){ /* move instruction to stage 2 */
+			stage2->type = stage1->type;
+			stage2->sReg_a = stage1->sReg_a;
+			stage2->sReg_b = stage1->sReg_b;
+			stage2->dReg = stage1->dReg;
+			stage2->PC = stage1->PC;
+			stage2->Addr = stage1->Addr;
+			stage2->taken = stage1->taken;
+			stage2->last = stage1->last;
+		}
+		
+		stage1->type = t_type; /* fetch new instruction */
+		stage1->sReg_a = t_sReg_a;
+		stage1->sReg_b = t_sReg_b;
+		stage1->dReg = t_dReg;
+		stage1->PC = t_PC;
+		stage1->Addr = t_Addr;
+		stage1->taken = 0;
+		  
+		if(stalled == 1){ /* unstall pipeline */
+			stalled = 0;
+		}
+		
+		if((stage2->sReg_a == stage3->dReg || stage2->sReg_b == stage3->dReg) && stage3->type == ti_LOAD){ /* find if pipeline should be stalled */
+			stalled = 1;
+			cycle_number++;
+		}
+		
+		if(stage3->type == ti_BRANCH && stage2->PC != (stage3->PC + 4) && prediction_method == 0){ /* find if branch taken when assuming not taken */
+			stage3->taken = 1;
+			extra_cycles += 2;
+		}
+		
+		if(stage3->type == ti_BRANCH && prediction_method == 1){ /* find if branch */
+			index = get_index(stage3);
+			if(index < 256){
+				if(predict_1bit[index][0] == stage3->Addr){ /* check if its in hash table */
+					if((predict_1bit[index][1] == 1 && stage2->PC == (stage3->PC + 4)) || (predict_1bit[index][1] == 0 && stage2->PC != (stage3->PC + 4))){ /* find if wrong prediction */
+						stage3->taken = 1;
+						extra_cycles += 2;
+						if(predict_1bit[index][1] == 1 && stage2->PC == (stage3->PC + 4)){ /* if predicted taken and was not change prediction bit */
+							predict_1bit[index][1] = 0;
+						}
+						if(predict_1bit[index][1] == 0 && stage2->PC != (stage3->PC + 4)){ /* if predicted not taken and was taken change predict bit */
+							predict_1bit[index][1] = 1;
+						}
+					}
+				}
+				else if(stage3->type == ti_BRANCH && stage2->PC != (stage3->PC + 4)){ /* add to hash table if not found */
+					predict_1bit[index][0] = stage3->Addr;
+					predict_1bit[index][1] = 1;
+				}
+				else if(stage3->type == ti_BRANCH && stage2->PC == (stage3->PC + 4)){
+					predict_1bit[index][0] = stage3->Addr;
+					predict_1bit[index][1] = 0;
+				}
+			}
+			else if(stage2->PC != (stage3->PC + 4)){
+				stage3->taken = 1;
+				extra_cycles += 2;
+			}
+		}
+		
+		if(stage3->type == ti_BRANCH && prediction_method == 2){ /* find if branch */
+			index = get_index(stage3);
+			if(index < 256){
+				if(predict_2bit[index][0] == stage3->Addr){
+					if(((predict_2bit[index][1]==0 && stage2->PC==(stage3->PC + 4)) || (predict_2bit[index][1]==1 && stage2->PC==(stage3->PC + 4))) || ((predict_2bit[index][1]==2 && stage2->PC!=(stage3->PC + 4)) || (predict_2bit[index][1]==3 && stage2->PC!=(stage3->PC + 4)))){ /* check for wrong prediction */
+						stage3->taken = 1;
+						extra_cycles += 2;
+						if(predict_2bit[index][1]==0 && stage2->PC==(stage3->PC + 4)){ /* if prediction wrong and in taken state 1 change to taken state 2 */
+							predict_2bit[index][1] = 1;
+						}
+						if(predict_2bit[index][1]==1 && stage2->PC==(stage3->PC + 4)){ /* if prediction wrong and in taken state 2 move to not taken state 1 */
+							predict_2bit[index][1] = 2;
+						}
+						if(predict_2bit[index][1]==2 && stage2->PC!=(stage3->PC + 4)){ /* if prediction wrong and in not taken state 1 move to taken state 2 */
+							predict_2bit[index][1] = 3;
+						}
+						if(predict_2bit[index][1]==3 && stage2->PC!=(stage3->PC + 4)){ /* if prediction wrong and in not taken state 2 move to taken state 1 */
+							predict_2bit[index][1] = 0;
+						}
+					}
+				}
+				else if(stage3->type == ti_BRANCH && stage2->PC != (stage3->PC + 4)){ /* add to hash table if not found */
+					predict_1bit[index][0] = stage3->Addr;
+					predict_1bit[index][1] = 0;
+				}
+				else if(stage3->type == ti_BRANCH && stage2->PC == (stage3->PC + 4)){
+					predict_1bit[index][0] = stage3->Addr;
+					predict_1bit[index][1] = 2;
+				}
+			}
+			else if(stage2->PC != (stage3->PC + 4)){
+				stage3->taken = 1;
+				extra_cycles += 2;
+			}
+		}
+		
+		if (stage4->type == ti_LOAD) {
+				  // call cache_access(struct cache_t *cp, tr_entry->Addr, access_type, sim_time)
+			  result = cache_access(Cache, stage4->Addr, 0, sim_time);
+			  if(result == 1){
+				if(trace_view_on == 0){
+					extra_cycles += 60;
+				}
+				data_miss = 1;
+				stall_cycles = 60;
+			  }
+			  if(result == 2){
+				if(trace_view_on == 0){
+					extra_cycles += 60;
+				}
+				data_miss = 1;
+				stall_cycles = 60;
+			  }
+				
+		}
+		if (stage4->type == ti_STORE) {
+			  // call cache_access(struct cache_t *cp, tr_entry->Addr, access_type, sim_time)
+			  result = cache_access(Cache, stage4->Addr, 1, sim_time);
+			 if(result == 1){
+				if(trace_view_on == 0){
+					extra_cycles += 60;
+				}
+				data_miss = 1;
+				stall_cycles = 60;
+			 }
+			 if(result == 2){
+				if(trace_view_on == 0){
+					extra_cycles += 60;
+				}
+				data_miss = 1;
+				stall_cycles = 60;
+			 }
+		}
+		
+		if(stage5->last == 1){ /* check for last instruction */
+			if(trace_view_on == 0){ /* if trace not on add extra cycles due to branches */
+				cycle_number += extra_cycles;
+			}
+			printf("+ Simulation terminates at cycle : %u\n", cycle_number);
+			break;
+		}
+	}
+	else{
+		stall_cycles --;
+	}
+	sim_time++;
+  }
+
+  trace_uninit();
+
+  exit(0);
+}
+
+

@@ -1,0 +1,960 @@
+/*
+	FUSE: Filesystem in Userspace
+	Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
+
+	This program can be distributed under the terms of the GNU GPL.
+	See the file COPYING.
+
+*/
+
+#define	FUSE_USE_VERSION 26
+
+#include <fuse.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+
+//size of a disk block
+#define	BLOCK_SIZE 512
+
+//we'll use 8.3 filenames
+#define	MAX_FILENAME 8
+#define	MAX_EXTENSION 3
+
+//How many files can there be in one directory?
+#define	MAX_FILES_IN_DIR (BLOCK_SIZE - (MAX_FILENAME + 1) - sizeof(int)) / \
+	((MAX_FILENAME + 1) + (MAX_EXTENSION + 1) + sizeof(size_t) + sizeof(long))
+
+//How much data can one block hold?
+#define	MAX_DATA_IN_BLOCK BLOCK_SIZE
+
+//How many pointers in an inode?
+#define NUM_POINTERS_IN_INODE ((BLOCK_SIZE - sizeof(unsigned int) - sizeof(unsigned long)) / sizeof(unsigned long))
+
+//#define SetBit(A, k) (A[(k/32)] |= (1 << (k%32)))
+//#define ClearBit(A, k) (A[(k/32)] &= ~(1 << (k%32)))
+//#define TestBit(A, k) (A[(k/32)] & (1 << (k%32)))
+
+struct cs1550_directory_entry
+{
+	char dname[MAX_FILENAME	+ 1];	//the directory name (plus space for a nul)
+	int nFiles;			//How many files are in this directory. 
+					//Needs to be less than MAX_FILES_IN_DIR
+
+	struct cs1550_file_directory
+	{
+		char fname[MAX_FILENAME + 1];	//filename (plus space for nul)
+		char fext[MAX_EXTENSION + 1];	//extension (plus space for nul)
+		size_t fsize;			//file size
+		long nStartBlock;		//where the first block is on disk
+	} files[MAX_FILES_IN_DIR];		//There is an array of these
+};
+
+typedef struct cs1550_directory_entry cs1550_directory_entry;
+
+struct cs1550_disk_block
+{
+	//And all of the space in the block can be used for actual data
+	//storage.
+	char data[MAX_DATA_IN_BLOCK];
+};
+
+typedef struct cs1550_disk_block cs1550_disk_block;
+
+int bitmap[320];
+int index1 = 0;
+int index2 = 0;
+int first = 1;
+
+static void SetBit(int A[], int k){
+	A[k/32] |= 1 << (k%32);
+}
+
+static void ClearBit(int A[], int k){
+	A[k/32] &= ~(1 << (k%32));
+}
+
+static int TestBit(int A[], int k){
+	return ((A[k/32] & (1 << (k%32))) != 0);
+}
+/*
+ * Called whenever the system wants to know the file attributes, including
+ * simply whether the file exists or not. 
+ *
+ * man -s 2 stat will show the fields of a stat structure
+ */
+static int cs1550_getattr(const char *path, struct stat *stbuf)
+{
+	int res = 0;
+	FILE *f;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	memset(stbuf, 0, sizeof(struct stat));
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+
+	//is path the root dir?
+	if (!strcmp(path, "/")) {
+		stbuf->st_mode = S_IFDIR | 0755;
+		stbuf->st_nlink = 2;
+	} else {
+		//Check if name is subdirectory
+		if(strlen(filename) < 1){ 
+			cs1550_directory_entry read_dirent;
+			int found = 0;
+			f = fopen(".directories", "r+b");
+			
+			if(strlen(directory) < 9 && strlen(directory) > 0){
+				// find if directory exists
+				while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+					if(!strcmp(read_dirent.dname, directory)){
+						found = 1;
+						break;
+					}
+				}
+				if(found){
+					//Might want to return a structure with these fields
+					stbuf->st_mode = S_IFDIR | 0755;
+					stbuf->st_nlink = 2;
+					res = 0; //no error
+				}
+				else{
+					res = -ENOENT;
+				}
+			}
+			else{
+				res = -ENOENT;
+			}
+			fclose(f);
+		}
+
+		//Check if name is a regular file
+		else if(strlen(filename) > 0){
+			if(strlen(filename) < 9 && strlen(extension) < 4 && strlen(directory) < 9){
+				cs1550_directory_entry read_dirent;
+				int found = 0;
+				f = fopen(".directories", "r+b");
+				
+				// check if directory exists
+				while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+					if(!strcmp(read_dirent.dname, directory)){
+						found = 1;
+						break;
+					}
+				}
+				if(found){
+					int i;
+					int found2 = 0;
+					
+					// check if file exists
+					for(i = 0; i < read_dirent.nFiles; i++){
+						if(!strcmp(read_dirent.files[i].fname, filename) && !strcmp(read_dirent.files[i].fext, extension)){
+							//regular file, probably want to be read and write
+							found2 = 1;
+							break;
+						}
+					}
+					if(found2){
+						stbuf->st_mode = S_IFREG | 0666; 
+						stbuf->st_nlink = 1; //file links
+						stbuf->st_size = read_dirent.files[i].fsize; //file size - make sure you replace with real size!
+						res = 0; // no error
+					}
+					else{
+						res = -ENOENT;
+					}
+				}
+				else{
+					res = -ENOENT;
+				}
+				fclose(f);
+			}
+			else{
+				res = -ENOENT;
+			}
+		}
+		else{
+			//Else return that path doesn't exist
+			res = -ENOENT;
+		}
+	}
+	return res;
+}
+
+/* 
+ * Called whenever the contents of a directory are desired. Could be from an 'ls'
+ * or could even be when a user hits TAB to do autocompletion
+ */
+static int cs1550_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+			 off_t offset, struct fuse_file_info *fi)
+{
+	//Since we're building with -Wall (all warnings reported) we need
+	//to "use" every parameter, so let's just cast them to void to
+	//satisfy the compiler
+	(void) offset;
+	(void) fi;
+	FILE *f;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	cs1550_directory_entry read_dirent;
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+	f = fopen(".directories", "r+b");
+
+	//This line assumes we have no subdirectories, need to change
+	//if (strcmp(path, "/") != 0)
+	//return -ENOENT;
+
+	//the filler function allows us to add entries to the listing
+	//read the fuse.h file for a description (in the ../include dir)
+	
+	// check if path is root directory
+	if(!strcmp(path, "/")){
+		filler(buf, ".", NULL, 0);
+		filler(buf, "..", NULL, 0);
+		
+		// list all directories in root
+		while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+			filler(buf, read_dirent.dname, NULL, 0);
+		}
+		fclose(f);
+		return 0;
+	}
+	else if(strlen(filename) < 1){ // check that path is not to a file
+		int found = 0;
+		// check if directory exists
+		while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+			if(!strcmp(read_dirent.dname, directory)){
+				found = 1;
+				break;
+			}
+		}
+		if(found){
+			char newpath[MAX_FILENAME+MAX_EXTENSION+2];
+			int i;
+			filler(buf, ".", NULL, 0);
+			filler(buf, "..", NULL, 0);
+			
+			// add files in a subdirectory
+			for(i = 0; i < read_dirent.nFiles; i++){
+				if(strlen(read_dirent.files[i].fext) > 0){
+					strcpy(newpath, read_dirent.files[i].fname);
+					strcat(newpath, ".");
+					strcat(newpath, read_dirent.files[i].fext);
+				}
+				else{
+					strcpy(newpath, read_dirent.files[i].fname);
+				}
+				filler(buf, newpath, NULL, 0);
+			}
+			fclose(f);
+			return 0;
+		}
+		else{
+			fclose(f);
+			return -ENOENT;
+		}
+	}
+	else{
+		fclose(f);
+		return -ENOENT;
+	}
+}
+
+/* 
+ * Creates a directory. We can ignore mode since we're not dealing with
+ * permissions, as long as getattr returns appropriate ones for us.
+ */
+static int cs1550_mkdir(const char *path, mode_t mode)
+{
+	(void) mode;
+	char *token1;
+	char *token2;
+	char s[2] = "/";
+	int i;
+	FILE *f;
+	cs1550_directory_entry read_dirent;
+	cs1550_directory_entry *new_dirent = malloc(sizeof(cs1550_directory_entry));
+	f = fopen(".directories", "r+b");
+	token1 = strtok((char *)path, s);
+	token2 = strtok(NULL, s);
+
+	if(token2 != NULL){ // check if not in root
+		fclose(f);
+		return -EPERM;
+	}
+	if(strlen(token1) > 8){ // check that directory name is legal
+		fclose(f);
+		return -ENAMETOOLONG;
+	}
+	
+	// check if directory already exists
+	while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+		if(!strcmp(read_dirent.dname, token1)){
+			fclose(f);
+			return -EEXIST;
+		}
+	}
+	
+	for(i = 0; i < 8; i++){
+		new_dirent->dname[i] = token1[i];
+	}
+	
+	// set fields of directory
+	new_dirent->dname[8] = '\0';
+	new_dirent->nFiles = 0;
+	fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+	fclose(f);
+	return 0;
+}
+
+/* 
+ * Removes a directory.
+ */
+static int cs1550_rmdir(const char *path)
+{
+	(void) path;
+    return 0;
+}
+
+/* 
+ * Does the actual creation of a file. Mode and dev can be ignored.
+ *
+ */
+static int cs1550_mknod(const char *path, mode_t mode, dev_t dev)
+{
+	(void) mode;
+	(void) dev;
+	FILE *f;
+	FILE *df;
+	cs1550_directory_entry read_dirent;
+	cs1550_disk_block read_disk;
+	cs1550_directory_entry *new_dirent = malloc(sizeof(cs1550_directory_entry));
+	int found = 0;
+	int found2 = 0;
+	int foundspace = 0;
+	int i = 0;
+	int j = 0;
+	int bit = 4;
+	int index = 0;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+	f = fopen(".directories", "r+b");
+	df = fopen(".disk", "r+b");
+	
+	// read in bitmap from disk from previous run of program
+	if(first){
+		fread(bitmap, 1, sizeof(bitmap), df);
+		
+		for(index = 0; index < 3; index++){
+			SetBit(bitmap, index);
+		}
+		first = 0;
+	}
+	
+	// check that not in root directory
+	if(strlen(filename) < 1){
+		fclose(f);
+		fclose(df);
+		return -EPERM;
+	}
+	// check that name or extension is not too long
+	if(strlen(filename) > 8 || strlen(extension) > 4){
+		fclose(f);;
+		fclose(df);
+		return -ENAMETOOLONG;
+	}
+	
+	// check if file already exists
+	while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+		if(!strcmp(read_dirent.dname, directory)){
+			found = 1;
+			break;
+		}
+		
+	}
+	if(found){
+		for(i = 0; i < read_dirent.nFiles; i++){
+			if(!strcmp(read_dirent.files[i].fname, filename) && !strcmp(read_dirent.files[i].fext, extension)){
+				found2 = 1;
+				break;
+			}
+		}
+		if(found2){
+			fclose(f);
+			fclose(df);
+			return -EEXIST;
+		}
+	}
+	
+	// check for a free block
+	for(bit = 3; bit < 10240; bit++){
+		if(TestBit(bitmap, bit) == 0){
+			foundspace = 1;
+			break;
+		}
+		fread(&read_disk, 1, sizeof(cs1550_disk_block), df);
+	}
+	
+	// if no free blocks do not create
+	if(!foundspace){
+		fclose(f);
+		fclose(df);
+		return -EPERM;
+	}
+	
+	// update directory structure
+	SetBit(bitmap, bit);
+	strcpy(new_dirent->dname, read_dirent.dname);
+	for(j = 0; j < read_dirent.nFiles; j++){
+		strcpy(new_dirent->files[j].fname, read_dirent.files[j].fname);
+		strcpy(new_dirent->files[j].fext, read_dirent.files[j].fext);
+		new_dirent->files[j].fsize = read_dirent.files[j].fsize;
+		new_dirent->files[j].nStartBlock = read_dirent.files[j].nStartBlock;
+	}
+	strcpy(new_dirent->files[read_dirent.nFiles].fname, filename);
+	strcpy(new_dirent->files[read_dirent.nFiles].fext, extension);
+	new_dirent->files[read_dirent.nFiles].fsize = 0;
+	new_dirent->files[read_dirent.nFiles].nStartBlock = bit;
+	new_dirent->nFiles = read_dirent.nFiles + 1;
+	fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+	fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+	fseek(df, 0, SEEK_SET);
+	fwrite(bitmap, 1, sizeof(bitmap), df);
+	fclose(f);
+	fclose(df);
+	return 0;
+}
+
+/*
+ * Deletes a file
+ */
+static int cs1550_unlink(const char *path)
+{
+    FILE *f;
+	FILE *df;
+	cs1550_directory_entry read_dirent;
+	cs1550_directory_entry *new_dirent = malloc(sizeof(cs1550_directory_entry));
+	int found = 0;
+	int found2 = 0;
+	int i = 0;
+	int blocks = 0;
+	int index = 0;
+	int index2 = 0;
+	int filenum = 0;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+	f = fopen(".directories", "r+b");
+	df = fopen(".disk", "r+b");
+	
+	if(first){
+		fread(bitmap, 1, sizeof(bitmap), df);
+		
+		for(index = 0; index < 3; index++){
+			SetBit(bitmap, index);
+		}
+		first = 0;
+	}
+	
+	// check if file exists
+	while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+		if(!strcmp(read_dirent.dname, directory)){
+			found = 1;
+			break;
+		}
+		
+	}
+	if(found){
+		if(strlen(filename) < 1){
+			fclose(f);
+			fclose(df);
+			return -EISDIR;
+		}
+		for(i = 0; i < read_dirent.nFiles; i++){
+			if(!strcmp(read_dirent.files[i].fname, filename) && !strcmp(read_dirent.files[i].fext, extension)){
+				found2 = 1;
+				break;
+			}
+		}
+		if(!found2){
+			fclose(f);
+			fclose(df);
+			return -ENOENT;
+		}
+	}
+	
+	
+	// calculate blocks that file takes up
+	if(read_dirent.files[i].fsize < 512){
+		blocks = 1;
+	}
+	else{
+		blocks = read_dirent.files[i].fsize / 512;
+		if(read_dirent.files[i].fsize % 512 != 0){
+			blocks++;
+		}
+	}
+	
+	// free the blocks used in bitmap
+	for(index = 0; index < blocks; index++){
+		ClearBit(bitmap, read_dirent.files[i].nStartBlock + index);
+	}
+	
+	// copy file info for files up to deleted file
+	for(filenum = 0; filenum < i; filenum++){
+		strcpy(new_dirent->files[filenum].fname, read_dirent.files[filenum].fname);
+		strcpy(new_dirent->files[filenum].fext, read_dirent.files[filenum].fext);
+		new_dirent->files[filenum].fsize = read_dirent.files[filenum].fsize;
+		new_dirent->files[filenum].nStartBlock = read_dirent.files[filenum].nStartBlock;
+	}
+	
+	// shift remaining files in directory's file array
+	for(index2 = i; index2 < read_dirent.nFiles - 1; index2++){
+		strcpy(new_dirent->files[index2].fname, read_dirent.files[index2+1].fname);
+		strcpy(new_dirent->files[index2].fext, read_dirent.files[index2+1].fext);
+		new_dirent->files[index2].fsize = read_dirent.files[index2+1].fsize;
+		new_dirent->files[index2].nStartBlock = read_dirent.files[index2+1].nStartBlock;
+	}
+	
+	// update directory structure
+	strcpy(new_dirent->dname, read_dirent.dname);
+	new_dirent->nFiles = read_dirent.nFiles - 1;
+	fseek(df, 0, SEEK_SET);
+	fwrite(bitmap, 1, sizeof(bitmap), df);
+	fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+	fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+	fclose(f);
+	fclose(df);
+
+    return 0;
+}
+
+/* 
+ * Read size bytes from file into buf starting from offset
+ *
+ */
+static int cs1550_read(const char *path, char *buf, size_t size, off_t offset,
+			  struct fuse_file_info *fi)
+{
+	(void) fi;
+	FILE *f;
+	FILE *df;
+	cs1550_directory_entry read_dirent;
+	int found = 0;
+	int found2 = 0;
+	int i = 0;
+	int read_size = 0;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+	f = fopen(".directories", "r+b");
+	
+	// check if path is a directory
+	if(strlen(filename) < 1 && strlen(extension) < 1){
+		fclose(f);
+		return -EISDIR;
+	}
+	//check to make sure path exists
+	while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+		if(!strcmp(read_dirent.dname, directory)){
+			found = 1;
+			break;
+		}
+		
+	}
+	if(found){
+		for(i = 0; i < read_dirent.nFiles; i++){
+			if(!strcmp(read_dirent.files[i].fname, filename) && !strcmp(read_dirent.files[i].fext, extension)){
+				found2 = 1;
+				break;
+			}
+		}
+		if(!found2){
+			fclose(f);
+			return 0;
+		}
+	}
+	else{
+		fclose(f);
+		return 0;
+	}
+	//check that size is > 0
+	if(size < 1){
+		fclose(f);
+		return 0;
+	}
+	//check that offset is <= to the file size
+	if(offset > read_dirent.files[i].fsize){
+		fclose(f);
+		return 0;
+	}
+	//read in data
+	df = fopen(".disk", "r+b");
+	
+	if(offset + size > read_dirent.files[i].fsize){
+		read_size = read_dirent.files[i].fsize - offset;
+		fseek(df, read_dirent.files[i].nStartBlock * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+		size = fread(buf, 1, read_size, df);
+		fclose(f);
+		fclose(df);
+		return size;
+	}
+	else{
+		fseek(df, read_dirent.files[i].nStartBlock * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+		size = fread(buf, 1, size, df);
+		fclose(f);
+		fclose(df);
+		return size;
+	}
+}
+
+/* 
+ * Write size bytes from buf into file starting from offset
+ *
+ */
+static int cs1550_write(const char *path, const char *buf, size_t size, 
+			  off_t offset, struct fuse_file_info *fi)
+{
+	(void) fi;
+	FILE *f;
+	FILE *df;
+	cs1550_directory_entry read_dirent;
+	cs1550_disk_block *new_disk_block = malloc(sizeof(cs1550_disk_block));
+	cs1550_directory_entry *new_dirent = malloc(sizeof(cs1550_directory_entry));
+	int found = 0;
+	int found2 = 0;
+	int i = 0;
+	int j = 0;
+	int k = 0;
+	int blocks = 0;
+	int blocks_before = 0;
+	int consec = 0;
+	int extra_blocks = 0;
+	int count = 0;
+	int hasextra = 1;
+	int maxfree = 0;
+	int startfree = 0;
+	int consec2 = 0;
+	int off = 0;
+	int ptr = 0;
+	int filenum = 0;
+	char directory[MAX_FILENAME+1] = "";
+	char filename[MAX_FILENAME+1] = "";
+	char extension[MAX_EXTENSION+1] = "";
+	sscanf(path, "/%[^/]/%[^.].%s", directory, filename, extension);
+	f = fopen(".directories", "r+b");
+	df = fopen(".disk", "r+b");
+	
+	//check to make sure path exists
+	while(fread(&read_dirent, 1, sizeof(cs1550_directory_entry), f) == sizeof(cs1550_directory_entry)){
+		if(!strcmp(read_dirent.dname, directory)){
+			found = 1;
+			break;
+		}
+		
+	}
+	if(found){
+		for(i = 0; i < read_dirent.nFiles; i++){
+			if(!strcmp(read_dirent.files[i].fname, filename) && !strcmp(read_dirent.files[i].fext, extension)){
+				found2 = 1;
+				break;
+			}
+		}
+		if(found2){
+			// check size is > 0
+			if(size < 1){
+				fclose(f);
+				fclose(df);
+				return 0;
+			}
+			// check offset is not past end of file
+			if(offset > read_dirent.files[i].fsize){
+				fclose(f);
+				fclose(df);
+				return -EFBIG;
+			}
+			
+			// check if write is append
+			if(offset+size > read_dirent.files[i].fsize){
+				// calculate blocks file currently takes
+				if(read_dirent.files[i].fsize < 512){
+					blocks_before = 1;
+				}
+				else{
+					blocks_before = read_dirent.files[i].fsize / 512;
+					if(read_dirent.files[i].fsize % 512 != 0){
+						blocks_before++;
+					}
+				}
+				// calculate blocks file will take after append
+				if(offset + size < 512){
+					blocks = 1;
+				}
+				else{
+					blocks = (offset + size) / 512;
+					if((offset + size) % 512 != 0){
+						blocks++;
+					}
+				}
+				// if extra blocks needed after append find space
+				if(blocks > blocks_before){
+					extra_blocks = blocks - blocks_before;
+					// check if there are enough adjacent free blocks
+					for(count = 0; count < extra_blocks; count++){
+						if(TestBit(bitmap, read_dirent.files[i].nStartBlock + blocks_before + count) == 1 || read_dirent.files[i].nStartBlock + blocks_before + count >= 10240){
+							hasextra = 0;
+						}
+					}
+					// if file needs to be moved to be contiguously allocated 
+					if(!hasextra){
+						// find enough contiguous blocks
+						for(j = 3; j < 10240; j++){
+							if(TestBit(bitmap, j) == 0){
+								consec++;
+								// contiguous blocks found
+								if(consec == blocks){
+									// update bitmap and move current blocks
+									for(k = 0; k < blocks_before; k++){
+										ClearBit(bitmap, read_dirent.files[i].nStartBlock + k);
+										SetBit(bitmap, j-blocks+k+1);
+										fseek(df, (read_dirent.files[i].nStartBlock+k) * sizeof(cs1550_disk_block), SEEK_SET);
+										fread(new_disk_block, sizeof(cs1550_disk_block), 1, df);
+										fseek(df, (j - blocks+k+1) * sizeof(cs1550_disk_block), SEEK_SET);
+										fwrite(new_disk_block, sizeof(cs1550_disk_block), 1, df);
+									}
+									// write to disk
+									fseek(df, (j - blocks+1) * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+									size = fwrite(buf, 1, size, df);
+									// update bitmap, update directory entry
+									for(count = 1; count <= extra_blocks; count++){
+										SetBit(bitmap, j - extra_blocks + count);
+									}
+									fseek(df, 0, SEEK_SET);
+									fwrite(bitmap, 1, sizeof(bitmap), df);
+									for(filenum = 0; filenum < read_dirent.nFiles; filenum++){
+										strcpy(new_dirent->files[filenum].fname, read_dirent.files[filenum].fname);
+										strcpy(new_dirent->files[filenum].fext, read_dirent.files[filenum].fext);
+										new_dirent->files[filenum].fsize = read_dirent.files[filenum].fsize;
+										new_dirent->files[filenum].nStartBlock = read_dirent.files[filenum].nStartBlock;
+									}
+									strcpy(new_dirent->dname, read_dirent.dname);
+									strcpy(new_dirent->files[i].fname, read_dirent.files[i].fname);
+									strcpy(new_dirent->files[i].fext, read_dirent.files[i].fext);
+									new_dirent->files[i].fsize = offset + size;
+									new_dirent->files[i].nStartBlock = j - blocks + 1;
+									new_dirent->nFiles = read_dirent.nFiles;
+									fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+									fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+									fclose(f);
+									fclose(df);
+									return size;
+								}
+							}
+							else{
+								consec = 0;
+							}
+						}
+						// if can't find contiguous blocks find max blocks and write as much that will fit
+						for(j = 3; j < 10240; j++){
+							if(TestBit(bitmap, j) == 0){
+								consec2++;
+								if(consec2 > maxfree){
+									startfree = j - consec2;
+									maxfree = consec2;
+								}
+							}
+							else{
+								consec2 = 0;
+							}
+						}
+						for(k = 0; k < consec2; k++){
+							ClearBit(bitmap, read_dirent.files[i].nStartBlock + k);
+							SetBit(bitmap, startfree + k);
+							fseek(df, (read_dirent.files[i].nStartBlock+k) * sizeof(cs1550_disk_block), SEEK_SET);
+							fread(new_disk_block, sizeof(cs1550_disk_block), 1, df);
+							fseek(df, (startfree+k+1) * sizeof(cs1550_disk_block), SEEK_SET);
+							fwrite(new_disk_block, sizeof(cs1550_disk_block), 1, df);
+						}
+						fseek(df, 0, SEEK_SET);
+						fwrite(bitmap, 1, sizeof(bitmap), df);
+						fseek(df, (startfree) * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+						for(off = offset; off < consec2 * sizeof(cs1550_disk_block); off++){
+							fwrite(buf + ptr, sizeof(char), 1, df);
+							ptr++;
+						}
+						for(filenum = 0; filenum < read_dirent.nFiles; filenum++){
+							strcpy(new_dirent->files[filenum].fname, read_dirent.files[filenum].fname);
+							strcpy(new_dirent->files[filenum].fext, read_dirent.files[filenum].fext);
+							new_dirent->files[filenum].fsize = read_dirent.files[filenum].fsize;
+							new_dirent->files[filenum].nStartBlock = read_dirent.files[filenum].nStartBlock;
+						}
+						strcpy(new_dirent->dname, read_dirent.dname);
+						strcpy(new_dirent->files[i].fname, read_dirent.files[i].fname);
+						strcpy(new_dirent->files[i].fext, read_dirent.files[i].fext);
+						new_dirent->files[i].fsize = consec2 * sizeof(cs1550_disk_block);
+						new_dirent->files[i].nStartBlock = startfree;
+						new_dirent->nFiles = read_dirent.nFiles;
+						fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+						fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+						fclose(f);
+						fclose(df);
+						return ptr;
+					}
+					else{ 		// if enough adjacent blocks are free update bitmap and directory entry and write to disk
+						for(k = 1; k < extra_blocks; k++){
+							SetBit(bitmap, read_dirent.files[i].nStartBlock + blocks_before + count);
+						}
+						fseek(df, 0, SEEK_SET);
+						fwrite(bitmap, 1, sizeof(bitmap), df);
+						fseek(df, read_dirent.files[i].nStartBlock * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+						size = fwrite(buf, 1, size, df);
+						for(filenum = 0; filenum < read_dirent.nFiles; filenum++){
+							strcpy(new_dirent->files[filenum].fname, read_dirent.files[filenum].fname);
+							strcpy(new_dirent->files[filenum].fext, read_dirent.files[filenum].fext);
+							new_dirent->files[filenum].fsize = read_dirent.files[filenum].fsize;
+							new_dirent->files[filenum].nStartBlock = read_dirent.files[filenum].nStartBlock;
+						}
+						strcpy(new_dirent->dname, read_dirent.dname);
+						strcpy(new_dirent->files[i].fname, read_dirent.files[i].fname);
+						strcpy(new_dirent->files[i].fext, read_dirent.files[i].fext);
+						new_dirent->files[i].fsize = offset + size;
+						new_dirent->files[i].nStartBlock = read_dirent.files[i].nStartBlock;
+						new_dirent->nFiles = read_dirent.nFiles;
+						fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+						fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+						fclose(f);
+						fclose(df);
+						return size;
+					}
+				}
+				else{		// append does not require extra blocks
+					fseek(df, read_dirent.files[i].nStartBlock * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+					size = fwrite(buf, 1, size, df);
+					for(filenum = 0; filenum < read_dirent.nFiles; filenum++){
+						strcpy(new_dirent->files[filenum].fname, read_dirent.files[filenum].fname);
+						strcpy(new_dirent->files[filenum].fext, read_dirent.files[filenum].fext);
+						new_dirent->files[filenum].fsize = read_dirent.files[filenum].fsize;
+						new_dirent->files[filenum].nStartBlock = read_dirent.files[filenum].nStartBlock;
+					}
+					strcpy(new_dirent->dname, read_dirent.dname);
+					strcpy(new_dirent->files[i].fname, read_dirent.files[i].fname);
+					strcpy(new_dirent->files[i].fext, read_dirent.files[i].fext);
+					new_dirent->files[i].fsize = offset + size;
+					new_dirent->files[i].nStartBlock = read_dirent.files[i].nStartBlock;
+					new_dirent->nFiles = read_dirent.nFiles;
+					fseek(f, -(sizeof(cs1550_directory_entry)), SEEK_CUR);
+					fwrite(new_dirent, sizeof(cs1550_directory_entry), 1, f);
+					fclose(f);
+					fclose(df);
+					return size;
+				}
+			} // write does not append
+			else{
+				fseek(df, read_dirent.files[i].nStartBlock * sizeof(cs1550_disk_block) + offset, SEEK_SET);
+				size = fwrite(buf, 1, size, df);
+				fclose(f);
+				fclose(df);
+				return size;
+			}
+		}
+		else{
+			fclose(f);
+			fclose(df);
+			return -ENOENT;
+		}
+	}
+	else{
+		fclose(f);
+		fclose(df);
+		return -ENOENT;
+	}
+
+}
+
+/******************************************************************************
+ *
+ *  DO NOT MODIFY ANYTHING BELOW THIS LINE
+ *
+ *****************************************************************************/
+
+/*
+ * truncate is called when a new file is created (with a 0 size) or when an
+ * existing file is made shorter. We're not handling deleting files or 
+ * truncating existing ones, so all we need to do here is to initialize
+ * the appropriate directory entry.
+ *
+ */
+static int cs1550_truncate(const char *path, off_t size)
+{
+	(void) path;
+	(void) size;
+
+    return 0;
+}
+
+
+/* 
+ * Called when we open a file
+ *
+ */
+static int cs1550_open(const char *path, struct fuse_file_info *fi)
+{
+	(void) path;
+	(void) fi;
+    /*
+        //if we can't find the desired file, return an error
+        return -ENOENT;
+    */
+
+    //It's not really necessary for this project to anything in open
+
+    /* We're not going to worry about permissions for this project, but 
+	   if we were and we don't have them to the file we should return an error
+
+        return -EACCES;
+    */
+
+    return 0; //success!
+}
+
+/*
+ * Called when close is called on a file descriptor, but because it might
+ * have been dup'ed, this isn't a guarantee we won't ever need the file 
+ * again. For us, return success simply to avoid the unimplemented error
+ * in the debug log.
+ */
+static int cs1550_flush (const char *path , struct fuse_file_info *fi)
+{
+	(void) path;
+	(void) fi;
+
+	return 0; //success!
+}
+
+
+//register our new functions as the implementations of the syscalls
+static struct fuse_operations hello_oper = {
+    .getattr	= cs1550_getattr,
+    .readdir	= cs1550_readdir,
+    .mkdir	= cs1550_mkdir,
+	.rmdir = cs1550_rmdir,
+    .read	= cs1550_read,
+    .write	= cs1550_write,
+	.mknod	= cs1550_mknod,
+	.unlink = cs1550_unlink,
+	.truncate = cs1550_truncate,
+	.flush = cs1550_flush,
+	.open	= cs1550_open,
+};
+
+//Don't change this.
+int main(int argc, char *argv[])
+{
+	return fuse_main(argc, argv, &hello_oper, NULL);
+}

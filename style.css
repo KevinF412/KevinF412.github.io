@@ -1,0 +1,165 @@
+body {
+	background: -webkit-linear-gradient(#000F1F, #333F4C); 
+    background: -o-linear-gradient(#000F1F, #333F4C); 
+    background: -moz-linear-gradient(#000F1F, #333F4C); 
+    background: linear-gradient(#000F1F, #333F4C); 
+	font-size: 1em;
+	min-height: 1920px;
+}
+article {
+	width: 70%;
+	margin: auto;
+}
+
+#main {
+	background-color: #FFFFFF;
+	box-shadow: 0px 0px 20px 3px #AE841A;
+}
+
+nav {
+	position: absolute;
+	top: 22px;
+	right: 20%;
+	padding: 0px;
+	font-family: "Courier New", Courier, monospace;
+}
+
+#navbar  {
+	list-style-type: none;
+	padding: 0;
+	margin: 0;
+}
+
+#navbar a {
+	text-align: center;
+	color: #FFFFFF;
+	font-size: 18px;
+	text-decoration: none;
+}
+
+header {
+	font-family: "Lucida Console", Monaco, monospace;
+	font-size:  2.5em;
+	color: #AE841A;
+	font-weight: bold;
+	text-align: left;
+	margin-left: 10px;
+}
+
+h2 {
+	font-family: "Courier New", Courier, monospace;
+	margin-left: 10px;
+	color: #192735;
+}
+
+p {
+	color: #474747;
+	margin-left: 20px;
+	margin-right: 20px;
+}
+
+.source ul li {
+	margin-left: 0;
+	padding: 0;
+	width: auto;
+	height: auto;
+	display: block;
+	text-decoration: none;
+}
+
+.source ul li a {
+	text-decoration: none;
+}
+
+.d {
+	margin-top: 20px;
+	margin-left: 20px;
+}
+
+.download {
+	position: relative;
+	left: 70px;
+	top: -60px;
+	margin-top: 20px;
+	margin-right: 90px;
+}
+
+#pargs {
+	position: relative;
+	top: -70px;
+	left: 90px;
+	margin-right: 110px;
+	color: #474747;
+}
+
+#ExpressionDisplayer {
+	position: relative;
+	top: -240px;
+	left: 250px;
+	box-shadow: 0px 0px 10px 1px #696969;
+}
+
+#ExpressionEvaluator {
+	position: relative;
+	top: -230px;
+	left: 350px;
+	box-shadow: 0px 0px 10px 1px #696969;
+}
+
+#SnakeGame {
+	position: relative;
+	top: -160px;
+	left: 250px;
+	box-shadow: 0px 0px 10px 1px #696969;
+}
+
+#sgd {
+	position: relative;
+	top: 80px;
+}
+
+#sgdownload {
+	position: relative;
+	top: 20px;
+}
+
+#bwmtf {
+	position: relative;
+	top: -100px;
+}
+
+#fs {
+	position: relative;
+	top: -40px;
+}
+
+#plc {
+	position: relative;
+	top: 50px;
+}
+
+#sg {
+	position: relative;
+	top: 70px;
+}
+
+#email {
+	position: absolute;
+	left: 15%;
+	top: 1870px;
+	color: white;
+	font-family: "Courier New", Courier, monospace;
+}
+
+#cell {
+	position: absolute;
+	right: 15%;
+	top: 1870px;
+	color: white;
+	font-family: "Courier New", Courier, monospace;
+}
+
+a:active, a:focus { 
+    border: none;
+    outline: none;
+}

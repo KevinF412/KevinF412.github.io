@@ -1,0 +1,112 @@
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+public class CircularSuffixArray {
+    public String str;
+    public int[] unsorted;
+    public int[] sorted;
+    public char[] encode;
+    
+    public CircularSuffixArray(String s)
+    {
+        str = s;
+        unsorted = new int[str.length()];
+        sorted = new int[str.length()];
+        
+        for(int j = 0; j < str.length(); j++)
+        {
+            sorted[j] = j;
+            unsorted[j] = j;
+        }
+        
+        qsort(sorted, 0, str.length()-1);
+        
+        encode = new char[str.length()];
+
+        for(int i = 0; i < str.length(); i++)
+        {
+            if(sorted[i] == 0)
+            {
+                encode[i] = str.charAt(str.length()-1);
+            }
+            else
+            {
+                encode[i] = str.charAt(sorted[i]-1);
+            }
+        }
+    }
+    
+    public int length()
+    {
+        return str.length();
+    }
+    
+    public int index(int i)
+    {
+       return sorted[i];        
+    }
+    
+    public boolean lessThan(int i, int j)
+    {
+        int k = 0;
+        boolean ret = false;
+        while(k < str.length())
+        {
+            if(str.charAt(i) != str.charAt(j))
+            {
+                ret = str.charAt(i) < str.charAt(j);
+                break;
+            }
+            if(i == str.length()-1)
+            {
+                i = 0;
+            }
+             else
+            {
+                i++;
+            }
+            if(j == str.length()-1)
+            {
+                j = 0;
+            }
+            else
+            {
+                j++;
+            }
+            k++;
+        }
+        return ret;
+    }
+    
+    public void qsort(int[] a, int lo, int hi)
+    {
+        if(hi <= lo)
+            return;
+        int j = partition(a, lo, hi);
+        qsort(a, lo, j-1);
+        qsort(a, j+1, hi);
+    }
+    
+    public int partition(int[] a, int lo, int hi)
+    {
+        int i = lo, j = hi+1;
+        int v = a[lo];
+        while(true)
+        {
+            while(lessThan(a[++i], v)) if(i == hi) break;
+            while(lessThan(v, a[--j])) if(j == lo) break;
+            if(i >= j) break;
+            exch(a, i, j);
+        }
+        exch(a, lo, j);
+        return j;
+    }
+    
+    public void exch(int[] a, int i, int j)
+    {
+        int t = a[i]; 
+        a[i] = a[j];
+        a[j] = t;
+    }
+}

@@ -1,0 +1,107 @@
+// Kevin Fleishaker
+// kcf9@pitt.edu
+// 9962
+// 9-26-13
+
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+public class ExpressionEvaluator 
+{
+   public static void main(String[] args)
+   {
+       In in = new In(args[0]);
+       String input;
+       String[] splitin;
+       ArrayList<String> atoms = new ArrayList<String>();
+       boolean getNext = true;
+       String expr = new String();
+       In user = new In();
+       String userin = " ";
+       int count = 1;
+       Scanner scanner = new Scanner(new InputStreamReader(System.in));
+       
+       for(int i = 0; i < 26; i++)
+       {
+           input = in.readLine();
+           splitin = input.split(" ");
+           atoms.add(splitin[0]);
+           atoms.add(splitin[1]);
+       }
+       
+       StdOut.println(atoms.get(0) + " = "  + atoms.get(1) + " " + atoms.get(2) + " = " + atoms.get(3) + " "
+                          + atoms.get(4) + " = " + atoms.get(5) + " " + atoms.get(6) + " = " + atoms.get(7) + " " 
+                          + atoms.get(8) + " = " + atoms.get(9) + " " + atoms.get(10) + " = " + atoms.get(11) + " "
+                          + atoms.get(12) + " = " + atoms.get(13) + " " + atoms.get(14) + " = " + atoms.get(15));
+       
+       StdOut.println(atoms.get(16) + " = " + atoms.get(17) + " " + atoms.get(18) + " = " + atoms.get(19) + " "
+                          + atoms.get(20) + " = " + atoms.get(21) + " " + atoms.get(22) + " = " + atoms.get(23) + " " 
+                          + atoms.get(24) + " = " + atoms.get(25) + " " + atoms.get(26) + " = " + atoms.get(27) + " "
+                          + atoms.get(28) + " = " + atoms.get(29) + " " + atoms.get(30) + " = " + atoms.get(31));
+       
+       StdOut.println(atoms.get(32) + " = " + atoms.get(33) + " " + atoms.get(34) + " = " + atoms.get(35) + " "
+                          + atoms.get(36) + " = " + atoms.get(37) + " " + atoms.get(38) + " = " + atoms.get(39) + " " 
+                          + atoms.get(40) + " = " + atoms.get(41) + " " + atoms.get(42) + " = " + atoms.get(43) + " "
+                          + atoms.get(44) + " = " + atoms.get(45) + " " + atoms.get(46) + " = " + atoms.get(47));
+       
+       StdOut.println(atoms.get(48) + " = " + atoms.get(49) + " " + atoms.get(50) + " = " + atoms.get(51));  
+       
+       while(in.hasNextLine())
+       {
+           expr = in.readLine();
+           ParseError check = new ParseError(expr);
+           //StdOut.println(expr);
+           if(check.nonAtom == true || check.missingRightParen == true || check.missingLeftParen == true || check.illegalOp == true)
+           {
+               StdOut.println("Error:");
+               if(check.nonAtom == true)
+               {
+                   StdOut.println(expr + " Illegal character : A non-atom must begin with '('.");
+                   StdOut.println("Get next expression");
+               }
+               else if(check.missingRightParen == true)
+               {
+                   StdOut.println(expr + " Missing right parenthesis.");
+                   StdOut.println("Get next expression");
+               }
+               else if(check.missingLeftParen == true)
+               {
+                   StdOut.println(expr + "Missing right parenthesis.");
+                   StdOut.println("Get next expression");
+               }
+               else if(check.illegalOp == true)
+               {
+                   StdOut.println(expr + " Illegal binary operator.");
+                   StdOut.println("Get next expression");
+               }
+           }
+           else
+           {
+               Expression exp = new Expression(expr);
+               for(int j = 0; j < 52; j+=2)
+               {
+                   exp.setAtom(atoms.get(j), atoms.get(j+1));
+               }
+               
+               StdOut.println(count + "." + " " + exp.toString() + " = " + exp.evaluate());
+               TreeDisplay display = new TreeDisplay(expr);
+               display.setRoot(exp.root);
+               StdOut.print("\tContinue? y or n : ");
+               userin = scanner.nextLine();
+               StdOut.println("\n");
+               if(userin.equals("y"))
+               {
+                   count++;
+                   continue;
+               }
+               else if(userin.equals("n"))
+               {
+                   System.exit(0);
+               }
+           }
+       }
+       StdOut.println("EOF reached");
+       System.exit(0);
+   }
+}

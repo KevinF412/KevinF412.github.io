@@ -1,0 +1,80 @@
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+public class BurrowsWheeler {
+    
+    public static void encode()
+    {
+        String s = BinaryStdIn.readString();
+        CircularSuffixArray suf = new CircularSuffixArray(s);
+        
+        for(int i = 0; i < s.length(); i++)
+        {
+            BinaryStdOut.flush();
+            if(suf.index(i) == 0)
+            {
+                BinaryStdOut.write(i);
+                BinaryStdOut.flush();
+                break;
+            }
+        }
+        
+        for(int j = 0; j < s.length(); j++)
+        {
+            BinaryStdOut.write((int) suf.encode[j], 8);
+            BinaryStdOut.flush();
+        }
+    }
+    
+    public static void decode()
+    {
+        int first = BinaryStdIn.readInt();
+        String s = BinaryStdIn.readString();
+        int[] next = new int[s.length()];
+        int[] start = new int[256];
+        char[] firstrow = new char[s.length()];
+        char[] lastrow = new char[s.length()];
+        
+        for(int i = 0; i < s.length(); i++)
+        {
+            firstrow[i] = s.charAt(i);
+        }
+        
+        Arrays.sort(firstrow);
+        
+        for(int k = 0; k < s.length(); k++)
+        {
+            for(int i = start[(int) firstrow[k]]; i < s.length(); i++)
+            {
+                if(s.charAt(i) == firstrow[k])
+                {
+                    next[k] = i;
+                    start[(int) firstrow[k]] = i+1;
+                    break;
+                }
+            }
+        }
+        
+        for(int i = 0; i < s.length(); i++)
+        {
+            BinaryStdOut.write(firstrow[first]);
+            BinaryStdOut.flush();
+            first = next[first];
+        }
+    }
+    
+    public static void main(String[] args)
+    {
+        if(args[0].equals("-"))
+        {
+            encode();
+            System.exit(0);
+        }
+        else if(args[0].equals("+"))
+        {
+            decode();
+            System.exit(0);
+        }
+    }
+}

@@ -1,0 +1,83 @@
+/**
+ * Auto Generated Java Class.
+ */
+public class MoveToFront {
+    
+    public static void encode()
+    {
+        char[] ascii = new char[256];
+        
+        for(int i = 0; i < 256; i++)
+        {
+            char c = (char) i;
+            ascii[i] = c;
+        }
+        
+        char next;
+        //BinaryStdIn in = new BinaryStdIn();
+            
+        while(!BinaryStdIn.isEmpty())
+        {
+            next = BinaryStdIn.readChar();
+            
+            for(int i = 0; i < 256; i++)
+            {
+                if(ascii[i] == next)
+                {
+                    //System.out.println("check 1");
+                    BinaryStdOut.write(i, 8);
+                    BinaryStdOut.flush();
+                    for(int j = i; j > 0; j--)
+                    {
+                        ascii[j] = ascii[j-1];
+                    }
+                    ascii[0] = next;
+                    break;
+                }
+            }
+        }
+    }
+    
+    public static void decode()
+    {
+        char[] ascii = new char[256];
+        
+        for(int i = 0; i < 256; i++)
+        {
+            char c = (char) i;
+            ascii[i] = c;
+        }
+        
+        int next;
+        //BinaryStdIn in = new BinaryStdIn();
+            
+        while(!BinaryStdIn.isEmpty())
+        {
+            next = BinaryStdIn.readInt(8);
+            char c = ascii[next];
+            
+            BinaryStdOut.write(ascii[next]);
+            BinaryStdOut.flush();
+            
+            for(int j = next; j > 0; j--)
+            {
+                ascii[j] = ascii[j-1];
+            }
+            ascii[0] = c;
+        }
+    }
+    
+    public static void main(String[] args)
+    {
+        if(args[0].equals("-"))
+        {
+            encode();
+            System.exit(0);
+        }
+        else if(args[0].equals("+"))
+        {
+            decode();
+            System.exit(0);
+        }
+    }
+}

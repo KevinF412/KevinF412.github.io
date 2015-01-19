@@ -1,0 +1,992 @@
+// Kevin Fleishaker
+// kcf9@pitt.edu
+// 9962
+// 9-26-13
+
+import java.util.*;
+import java.lang.*;
+import java.io.*;
+
+public class Expression 
+{   
+    public static boolean A = false;
+    public static boolean B = false;
+    public static boolean C = false;
+    public static boolean D = false;
+    public static boolean E = false;
+    public static boolean F = false;
+    public static boolean G = false;
+    public static boolean H = false;
+    public static boolean I = false;
+    public static boolean J = false;
+    public static boolean K = false;
+    public static boolean L = false;
+    public static boolean M = false;
+    public static boolean N = false;
+    public static boolean O = false;
+    public static boolean P = false;
+    public static boolean Q = false;
+    public static boolean R = false;
+    public static boolean S = false;
+    public static boolean T = false;
+    public static boolean U = false;
+    public static boolean V = false;
+    public static boolean W = false;
+    public static boolean X = false;
+    public static boolean Y = false;
+    public static boolean Z = false;
+    String strexp;
+    Node root;
+    int numNegs;
+    
+    public Expression(String s)
+    {
+        strexp = s;
+        Stack<Node> oprnStack = new Stack<Node>();
+        Stack<Node> optrStack = new Stack<Node>();
+        Character[] exp = new Character[s.length()-2];
+        int nots = 0;
+        int nesting = 0;
+        int notNesting = 0;
+        
+        for(int i = 0; i < s.length()-2; i++)
+        {
+            exp[i] = s.charAt(i+1);
+        }
+        if(exp[0] != '(')
+            nesting++;
+        if(exp[0] == '(' && exp[1] == '(')
+            nesting--;
+        Character elt;
+        boolean notOnMult = false;
+        
+        for(int count = 0; count < s.length()-2; count++)
+        {
+            elt = exp[count];
+            if(elt == '(')
+            {
+                Node newNode = new Node(elt, null, null);
+                optrStack.push(newNode);
+                nesting++;
+            }
+            else if(elt == '^' || elt == 'v')
+            {
+                if(nots > 0)
+                    notOnMult = true;
+                Node newNode = new Node(elt, null, null);
+                if(optrStack.isEmpty() == true || optrStack.peek().symbol == '(')
+                {
+                    optrStack.push(newNode);
+                }
+                else
+                {
+                    do
+                    {
+                        Node node = optrStack.pop();
+                        node.right = oprnStack.pop();
+                        node.left = oprnStack.pop();
+                        oprnStack.push(node);
+                        nesting = 0;
+                    }while(optrStack.isEmpty() != true && optrStack.peek().symbol != '(');
+                    optrStack.push(newNode);
+                }
+            }
+            else if(Character.isLetter(elt) || elt == '!')
+            {
+                if(elt == '!')
+                {
+                    nots++;
+                }
+                else
+                {
+                    if(nots > 0 && exp[count+1] == ')' && notOnMult == false)
+                    {
+                        nesting--;
+                        Node newNode = new Node('!', null, null);
+                        for(int i = 0; i < nots-1; i++)
+                        {
+                            Node current = newNode;
+                            Node newNode2 = new Node('!', null, null);
+                            for(int j = 0; j < i; j++)
+                                current = current.right;
+                            current.right = newNode2;
+                        }
+                        Node newNode3 = new Node(elt, null, null);
+                        Node current2 = newNode;
+                        for(int k = 0; k < nots-1; k++)
+                            current2 = current2.right;
+                        current2.right = newNode3;
+                        oprnStack.push(newNode);
+                        nots = 0;
+                    }
+                    else
+                    {
+                        Node newNode = new Node(elt, null, null);
+                        oprnStack.push(newNode);
+                    }
+                }
+            }
+            else if(elt == ')')
+            {
+                int ops = 0;
+                if(nesting != 0)
+                    nesting--;
+               
+                if(nesting <= 0)
+                {
+                    while(ops < 1 && optrStack.isEmpty() != true)
+                    {
+                        Node node = optrStack.pop();
+                        if(node.symbol != '(')
+                        {
+                            ops++;
+                            if(oprnStack.isEmpty() != true)
+                                node.right = oprnStack.pop();
+                            if(oprnStack.isEmpty() != true)
+                                node.left = oprnStack.pop();
+                            if(notOnMult == true && nots > 0)
+                            {
+                                Node newNode = new Node('!', null, null);
+                                for(int i = 0; i < nots-1; i++)
+                                {
+                                    Node current = newNode;
+                                    Node newNode2 = new Node('!', null, null);
+                                    for(int j = 0; j < i; j++)
+                                        current = current.right;
+                                    current.right = newNode2;
+                                }
+                                Node current2 = newNode;
+                                for(int k = 0; k < nots-1; k++)
+                                    current2 = current2.right;
+                                current2.right = node;
+                                oprnStack.push(newNode);
+                                notOnMult = false;
+                            }
+                            else
+                            {
+                                oprnStack.push(node);
+                            }
+                        }
+                    }
+                }
+            }
+            else if(elt == ' ')
+            {
+                continue;
+            }
+        }     
+            
+        while(optrStack.isEmpty() != true)
+        {
+            Node node = optrStack.pop();
+            if(node.symbol != '(')
+            {
+                if(oprnStack.isEmpty() != true)
+                    node.right = oprnStack.pop();
+                if(oprnStack.isEmpty() != true)
+                    node.left = oprnStack.pop();
+                if(notOnMult == true && nots > 0)
+                {
+                    Node newNode = new Node('!', null, null);
+                    for(int i = 0; i < nots-1; i++)
+                    {
+                        Node current = newNode;
+                        Node newNode2 = new Node('!', null, null);
+                        for(int j = 0; j < i; j++)
+                            current = current.right;
+                        current.right = newNode2;
+                    }
+                    Node current2 = newNode;
+                    for(int k = 0; k < nots-1; k++)
+                        current2 = current2.right;
+                    current2.right = node;
+                    oprnStack.push(newNode);
+                    notOnMult = false;
+                }
+                else
+                {
+                    oprnStack.push(node);
+                }
+            }
+        }
+        
+        //TreeDisplay display = new TreeDisplay(s);
+        root = oprnStack.pop();
+        //display.setRoot(root);
+    }
+    
+    public static void setAtom(String atom, String value)
+    {
+        if(atom.equals("A"))
+        {
+            if(value.equals("true"))
+                A = true;
+            else
+                A = false;
+        }
+        else if(atom.equals("B"))
+        {
+            if(value.equals("true"))
+                B = true;
+            else
+                B = false;
+        }
+        else if(atom.equals("C"))
+        {
+            if(value.equals("true"))
+                C = true;
+            else
+                C = false;
+        }
+        else if(atom.equals("D"))
+        {
+            if(value.equals("true"))
+                D = true;
+            else
+                D = false;
+        }
+        else if(atom.equals("E"))
+        {
+            if(value.equals("true"))
+                E = true;
+            else
+                E = false;
+        }
+        else if(atom.equals("F"))
+        {
+            if(value.equals("true"))
+                F = true;
+            else
+                F = false;
+        }
+        else if(atom.equals("G"))
+        {
+            if(value.equals("true"))
+                G = true;
+            else
+                G = false;
+        }
+        else if(atom.equals("H"))
+        {
+            if(value.equals("true"))
+                H = true;
+            else
+                H = false;
+        }
+        else if(atom.equals("I"))
+        {
+            if(value.equals("true"))
+                I = true;
+            else
+                I = false;
+        }
+        else if(atom.equals("J"))
+        {
+            if(value.equals("true"))
+                J = true;
+            else
+                J = false;
+        }
+        else if(atom.equals("K"))
+        {
+            if(value.equals("true"))
+                K = true;
+            else
+                K = false;
+        }
+        else if(atom.equals("L"))
+        {
+            if(value.equals("true"))
+                L = true;
+            else
+                L = false;
+        }
+        else if(atom.equals("M"))
+        {
+            if(value.equals("true"))
+                M = true;
+            else
+                M = false;
+        }
+        else if(atom.equals("N"))
+        {
+            if(value.equals("true"))
+                N = true;
+            else
+                N = false;
+        }
+        else if(atom.equals("O"))
+        {
+            if(value.equals("true"))
+                O = true;
+            else
+                O = false;
+        }
+        else if(atom.equals("P"))
+        {
+            if(value.equals("true"))
+                P = true;
+            else
+                P = false;
+        }
+        else if(atom.equals("Q"))
+        {
+            if(value.equals("true"))
+                Q = true;
+            else
+                Q = false;
+        }
+        else if(atom.equals("R"))
+        {
+            if(value.equals("true"))
+                R = true;
+            else
+                R = false;
+        }
+        else if(atom.equals("S"))
+        {
+            if(value.equals("true"))
+                S = true;
+            else
+                S = false;
+        }
+        else if(atom.equals("T"))
+        {
+            if(value.equals("true"))
+                T = true;
+            else
+                T = false;
+        }
+        else if(atom.equals("U"))
+        {
+            if(value.equals("true"))
+                U = true;
+            else
+                U = false;
+        }
+        else if(atom.equals("V"))
+        {
+            if(value.equals("true"))
+                V = true;
+            else
+                V = false;
+        }
+        else if(atom.equals("W"))
+        {
+            if(value.equals("true"))
+                W = true;
+            else
+                W = false;
+        }
+        else if(atom.equals("X"))
+        {
+            if(value.equals("true"))
+                X = true;
+            else
+                X = false;
+        }
+        else if(atom.equals("Y"))
+        {
+            if(value.equals("true"))
+                Y = true;
+            else
+                Y = false;
+        }
+        else if(atom.equals("Z"))
+        {
+            if(value.equals("true"))
+                Z = true;
+            else
+                Z = false;
+        }
+    }
+    
+    public boolean evaluate()
+    {
+        return evaluate(this.root);
+    }
+    
+    public boolean evaluate(Node root)
+    {
+        int negs = 0;
+        boolean retval = false;
+         
+         if((Character.isLetter(root.symbol) == true && root.symbol != 'v') || root.symbol == '!')
+         {
+             if(root.symbol == '!')
+             {
+                 negs++;
+                 Node current = root;
+                 while(!Character.isLetter(current.right.symbol))
+                 {
+                     current = current.right;
+                     negs++;
+                 }
+                 if(current.right.symbol == 'v')
+                 {
+                     boolean ret = false;
+                     ret = evaluate(current.right);
+                     if(negs % 2 != 0)
+                     {
+                         if(ret == true)
+                             ret = false;
+                         if(ret == false)
+                             ret = true;
+                     }
+                     retval = ret;
+                 }
+                 else
+                 {
+                     current = current.right;
+                     
+                     if(current.symbol == 'A')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(A == true)
+                                 A = false;
+                             else if(A == false)
+                                 A = true;
+                         }
+                         retval = A;
+                     }
+                     else if(current.symbol == 'B')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(B == true)
+                                 B = false;
+                             else if(B == false)
+                                 B = true;
+                         }
+                         retval = B;
+                     }
+                     else if(current.symbol == 'C')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(C == true)
+                                 C = false;
+                             else if(C == false)
+                                 C = true;
+                         }
+                         retval = C;
+                     }
+                     else if(current.symbol == 'D')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(D == true)
+                                 D = false;
+                             else if(D == false)
+                                 D = true;
+                         }
+                         retval = D;
+                     }
+                     else if(current.symbol == 'E')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(E == true)
+                                 E = false;
+                             else if(E == false)
+                                 E = true;
+                         }
+                         retval = E;
+                     }
+                     else if(current.symbol == 'F')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(F == true)
+                                 F = false;
+                             else if(F == false)
+                                 F = true;
+                         }
+                         retval = F;
+                     }
+                     else if(current.symbol == 'G')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(G == true)
+                                 G = false;
+                             else if(G == false)
+                                 G = true;
+                         }
+                         retval = G;
+                     }
+                     else if(current.symbol == 'H')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(H == true)
+                                 H = false;
+                             else if(H == false)
+                                 H = true;
+                         }
+                         retval = H;
+                     }
+                     else if(current.symbol == 'I')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(I == true)
+                                 I = false;
+                             else if(I == false)
+                                 I = true;
+                         }
+                         retval = I;
+                     }
+                     else if(current.symbol == 'J')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(J == true)
+                                 J = false;
+                             else if(J == false)
+                                 J = true;
+                         }
+                         retval = J;
+                     }
+                     else if(current.symbol == 'K')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(K == true)
+                                 K = false;
+                             else if(K == false)
+                                 K = true;
+                         }
+                         retval = K;
+                     }
+                     else if(current.symbol == 'L')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(L == true)
+                                 L = false;
+                             else if(L == false)
+                                 L = true;
+                         }
+                         retval = L;
+                     }
+                     else if(current.symbol == 'M')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(M == true)
+                                 M = false;
+                             else if(M == false)
+                                 M = true;
+                         }
+                         retval = M;
+                     }
+                     else if(current.symbol == 'N')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(N == true)
+                                 N = false;
+                             else if(N == false)
+                                 N = true;
+                         }
+                         retval = N;
+                     }
+                     else if(current.symbol == 'O')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(O == true)
+                                 O = false;
+                             else if(O == false)
+                                 O = true;
+                         }
+                         retval = O;
+                     }
+                     else if(current.symbol == 'P')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(P == true)
+                                 P = false;
+                             else if(P == false)
+                                 P = true;
+                         }
+                         retval = P;
+                     }
+                     else if(current.symbol == 'Q')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(Q == true)
+                                 Q = false;
+                             else if(Q == false)
+                                 Q = true;
+                         }
+                         retval = Q;
+                     }
+                     else if(current.symbol == 'R')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(R == true)
+                                 R = false;
+                             else if(R == false)
+                                 R = true;
+                         }
+                         retval = R;
+                     }
+                     else if(current.symbol == 'S')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(S == true)
+                                 S = false;
+                             else if(S == false)
+                                 S = true;
+                         }
+                         retval = S;
+                     }
+                     else if(current.symbol == 'T')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(T == true)
+                                 T = false;
+                             else if(T == false)
+                                 T = true;
+                         }
+                         retval = T;
+                     }
+                     else if(current.symbol == 'U')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(U == true)
+                                 U = false;
+                             else if(U == false)
+                                 U = true;
+                         }
+                         retval = U;
+                     }
+                     else if(current.symbol == 'V')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(V == true)
+                                 V = false;
+                             else if(V == false)
+                                 V = true;
+                         }
+                         retval = V;
+                     }
+                     else if(current.symbol == 'W')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(W == true)
+                                 W = false;
+                             else if(W == false)
+                                 W = true;
+                         }
+                         retval = W;
+                     }
+                     else if(current.symbol == 'X')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(X == true)
+                                 X = false;
+                             else if(X == false)
+                                 X = true;
+                         }
+                         retval = X;
+                     }
+                     else if(current.symbol == 'Y')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(Y == true)
+                                 Y = false;
+                             else if(Y == false)
+                                 Y = true;
+                         }
+                         retval = Y;
+                     }
+                     else if(current.symbol == 'Z')
+                     {
+                         if(negs % 2 != 0)
+                         {
+                             if(Z == true)
+                                 Z = false;
+                             else if(Z == false)
+                                 Z = true;
+                         }
+                         retval = Z;
+                     }
+                 }
+             }
+             else if(Character.isLetter(root.symbol) && root.symbol != 'v')
+             {
+                 if(root.symbol == 'A')
+                 { 
+                     retval = A;
+                 }
+                 else if(root.symbol == 'B')
+                 {
+                     retval = B;
+                 }
+                 else if(root.symbol == 'C')
+                 {
+                     retval = C;
+                 }
+                 else if(root.symbol == 'D')
+                 {
+                     retval = D;
+                 }
+                 else if(root.symbol == 'E')
+                 {
+                     retval = E;
+                 }
+                 else if(root.symbol == 'F')
+                 {
+                     retval = F;
+                 }
+                 else if(root.symbol == 'G')
+                 {
+                     retval = G;
+                 }
+                 else if(root.symbol == 'H')
+                 {
+                     retval = H;
+                 }
+                 else if(root.symbol == 'I')
+                 {
+                     retval = I;
+                 }
+                 else if(root.symbol == 'J')
+                 {
+                     retval = J;
+                 }
+                 else if(root.symbol == 'K')
+                 {
+                     retval = K;
+                 }
+                 else if(root.symbol == 'L')
+                 {
+                     retval = L;
+                 }
+                 else if(root.symbol == 'M')
+                 {
+                     retval = M;
+                 }
+                 else if(root.symbol == 'N')
+                 {
+                     retval = N;
+                 }
+                 else if(root.symbol == 'O')
+                 {
+                     retval = O;
+                 }
+                 else if(root.symbol == 'P')
+                 {
+                     retval = P;
+                 }
+                 else if(root.symbol == 'Q')
+                 {
+                     retval = Q;
+                 }
+                 else if(root.symbol == 'R')
+                 {
+                     retval = R;
+                 }
+                 else if(root.symbol == 'S')
+                 {
+                     retval = S;
+                 }
+                 else if(root.symbol == 'T')
+                 {
+                     retval = T;
+                 }
+                 else if(root.symbol == 'U')
+                 {
+                     retval = U;
+                 }
+                 else if(root.symbol == 'V')
+                 {
+                     retval = V;
+                 }
+                 else if(root.symbol == 'W')
+                 {
+                     retval = W;
+                 }
+                 else if(root.symbol == 'X')
+                 {
+                     retval = X;
+                 }
+                 else if(root.symbol == 'Y')
+                 {
+                     retval = Y;
+                 }
+                 else if(root.symbol == 'Z')
+                 {
+                     retval = Z;
+                 }
+             }
+         }
+         else
+         {
+             switch(root.symbol)
+             {
+                 case '^':
+                     return (evaluate(root.left) && evaluate(root.right));
+                 case 'v':
+                     return (evaluate(root.left) || evaluate(root.right));
+             }
+         }
+         
+         return retval;
+    }
+    
+    public Expression copy()
+    {
+        return new Expression(this.strexp);
+    }
+    
+    public void normalize()
+    {
+        normalize(this.root);
+    }
+    
+    public void normalize(Node root)
+    {
+        numNegs = 0;
+        if(root.symbol == '!')
+        {
+            Node cur = root;
+            numNegs++;
+            while(cur.right.symbol == '!')
+            {
+                numNegs++;
+                cur = cur.right;
+            }
+            if(cur.right.symbol == '^' || cur.right.symbol == 'v')
+            {
+                if(cur.right.symbol == 'v')
+                {
+                    if(numNegs % 2 != 0)
+                    {
+                        Node newNeg1 = new Node('!', null, cur.right.left);
+                        Node newNeg2 = new Node('!', null, cur.right.right);
+                        cur.right.symbol = '^';
+                        root.symbol = cur.right.symbol;
+                        root.left = newNeg1;
+                        root.right = newNeg2;
+                        
+                        if(root.right != null)
+                            normalize(root.right);
+                        if(root.left != null)
+                            normalize(root.left);
+                    }
+                    else
+                    {
+                        root = cur.right;
+                        
+                        if(root.right != null)
+                            normalize(root.right);
+                        if(root.left != null)
+                            normalize(root.left);
+                    }
+                    
+                }
+                else if(cur.right.symbol == '^')
+                {
+                    if(numNegs % 2 != 0)
+                    {
+                        Node newNeg1 = new Node('!', null, cur.right.left);
+                        Node newNeg2 = new Node('!', null, cur.right.right);
+                        cur.right.symbol = 'v';
+                        root.symbol = cur.right.symbol;
+                        root.left = newNeg1;
+                        root.right = newNeg2;
+                        if(root.right != null)
+                            normalize(root.right);
+                        if(root.left != null)
+                            normalize(root.left);
+                    }
+                    else
+                    {
+                        root = cur.right;
+                      
+                        if(root.right != null)
+                            normalize(root.right);
+                        if(root.left != null)
+                            normalize(root.left);
+                    }
+                }
+            }
+            else if(Character.isLetter(cur.right.symbol))
+            {
+                if(numNegs % 2 != 0)
+                {
+                    root.right.symbol = cur.right.symbol;
+                    root.right.right = null;
+                    if(root.right != null)
+                            normalize(root.right);
+                    if(root.left != null)
+                        normalize(root.left);
+                }
+                else
+                {
+                    root.symbol = cur.right.symbol;
+                    root.right = null;
+                    if(root.right != null)
+                            normalize(root.right);
+                    if(root.left != null)
+                        normalize(root.left);
+                }
+            }
+        }
+        else if(root.symbol == '^')
+        {
+            if(root.right.symbol == 'v' || root.left.symbol == 'v')
+            {
+                if(root.right.symbol == 'v')
+                {
+                    Node new1 = new Node('^', root.left, root.right.left);
+                    Node new2 = new Node('^', root.left, root.right.right);
+                    root.symbol = 'v';
+                    root.right = new2;
+                    root.left = new1;
+                }
+                 else if(root.left.symbol == 'v')
+                {
+                    Node new1 = new Node('^', root.right, root.left.left);
+                    Node new2 = new Node('^', root.right, root.left.right);
+                    root.symbol = 'v';
+                    root.right = new2;
+                    root.left = new1;
+                }
+            }
+            normalize(root.right);
+            normalize(root.left);
+        }
+        else if(root.symbol == 'v')
+        {
+            normalize(root.right);
+            normalize(root.left);
+        }
+    }
+    
+    public void displayNormalized()
+    {
+        TreeDisplay displayNorm = new TreeDisplay("normalized " + this.strexp);
+        displayNorm.setRoot(this.root);
+    }
+    
+    public String toString()
+    {
+        return this.strexp;
+    }
+}
